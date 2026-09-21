@@ -1,6 +1,0 @@
-{
-  "name": "MotoDílomat.cz – Srovnávač dílů pro dvoutakty z ČSSR",
-  "description": "Nezávislý cenový srovnávač a vyhledávač dílů pro motocykly Jawa, ČZ, Babetta a Stadion s optimalizátorem košíku a technickými rozkresy motoru.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
