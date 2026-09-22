@@ -52,6 +52,45 @@ describe('extractMicrodataProduct', () => {
       '<div itemscope itemtype="https://schema.org/Product"><span itemprop="name">X</span></div>';
     expect(extractMicrodataProduct(html)).toBeNull();
   });
+
+  it('does not pick up itemprop="name" from an unrelated Person/Organization block on the page', () => {
+    // Regrese: probe-shops v2 na motojelinek.cz vracelo jako "name" produktu
+    // jméno majitele e-shopu, protože extrakce hledala první itemprop="name"
+    // na celé stránce místo jen uvnitř Product bloku.
+    const html = `
+      <header itemscope itemtype="https://schema.org/Person">
+        <span itemprop="name">Jan Jelínek</span>
+      </header>
+      <main>
+        <div itemscope itemtype="https://schema.org/Product">
+          <span itemprop="name">Podsedlové plechy 6 - Jawa 50/550</span>
+          <span itemprop="price" content="7250"></span>
+          <link itemprop="availability" href="https://schema.org/InStock" />
+        </div>
+      </main>
+    `;
+
+    const product = extractMicrodataProduct(html);
+    expect(product?.name).toBe('Podsedlové plechy 6 - Jawa 50/550');
+    expect(product?.priceVat).toBe(7250);
+  });
+
+  it('does not leak the closing tag of a nested same-name element as the scope boundary', () => {
+    // Vnořené <div> uvnitř Product bloku (běžné v reálném markupu) nesmí
+    // ukončit hledání rozsahu předčasně na první </div>.
+    const html = `
+      <div itemscope itemtype="https://schema.org/Product">
+        <div class="wrapper">
+          <span itemprop="name">Řetěz Simson S51</span>
+        </div>
+        <span itemprop="price" content="350"></span>
+      </div>
+    `;
+
+    const product = extractMicrodataProduct(html);
+    expect(product?.name).toBe('Řetěz Simson S51');
+    expect(product?.priceVat).toBe(350);
+  });
 });
 
 describe('hasProductTypeMeta', () => {
