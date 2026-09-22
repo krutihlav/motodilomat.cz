@@ -1,11 +1,12 @@
 #!/usr/bin/env tsx
-import {createReadStream} from 'node:fs';
-import {Readable} from 'node:stream';
-import type {SupabaseClient} from '@supabase/supabase-js';
-import {createServiceRoleClient} from '../src/lib/supabase/server';
-import {parseHeurekaFeed} from '../src/lib/feed/parseHeurekaFeed';
-import {isRelevantItem} from '../src/lib/feed/relevanceFilter';
-import type {FeedItem} from '../src/lib/feed/types';
+import { createReadStream } from 'node:fs';
+import { Readable } from 'node:stream';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { createServiceRoleClient } from '../src/lib/supabase/server';
+import { parseHeurekaFeed } from '../src/lib/feed/parseHeurekaFeed';
+import { isRelevantItem } from '../src/lib/feed/relevanceFilter';
+import type { FeedItem } from '../src/lib/feed/types';
+import { crawlShop } from '../src/lib/crawl/crawlShop';
 
 const CHUNK_SIZE = 200;
 const STALE_AFTER_DAYS = 3;
@@ -22,8 +23,11 @@ export type ImportSummary = {
 
 type Shop = {
   id: string;
+  sourceType: 'feed' | 'crawl';
   feedUrl: string | null;
   feedPermission: boolean;
+  baseUrl: string | null;
+  crawlEnabled: boolean;
 };
 
 type ExistingProduct = {
@@ -38,13 +42,9 @@ type ExistingProduct = {
 export interface ImportRepository {
   getShop(shopId: string): Promise<Shop | null>;
   getExistingProducts(shopId: string): Promise<Map<string, ExistingProduct>>;
-  upsertProducts(
-    shopId: string,
-    items: FeedItem[],
-    now: Date,
-  ): Promise<Map<string, string>>; // shopItemId -> shop_products.id
+  upsertProducts(shopId: string, items: FeedItem[], now: Date): Promise<Map<string, string>>; // shopItemId -> shop_products.id
   insertPriceHistory(
-    entries: {shopProductId: string; price: number; inStock: boolean}[],
+    entries: { shopProductId: string; price: number; inStock: boolean }[],
   ): Promise<void>;
   markStaleOutOfStock(shopId: string, cutoff: Date): Promise<number>;
 }
@@ -53,9 +53,9 @@ export class SupabaseImportRepository implements ImportRepository {
   constructor(private readonly client: SupabaseClient) {}
 
   async getShop(shopId: string): Promise<Shop | null> {
-    const {data, error} = await this.client
+    const { data, error } = await this.client
       .from('shops')
-      .select('id, feed_url, feed_permission')
+      .select('id, source_type, feed_url, feed_permission, base_url, crawl_enabled')
       .eq('id', shopId)
       .maybeSingle();
 
@@ -66,22 +66,31 @@ export class SupabaseImportRepository implements ImportRepository {
       return null;
     }
 
-    return {id: data.id, feedUrl: data.feed_url, feedPermission: data.feed_permission};
+    return {
+      id: data.id,
+      sourceType: data.source_type,
+      feedUrl: data.feed_url,
+      feedPermission: data.feed_permission,
+      baseUrl: data.base_url,
+      crawlEnabled: data.crawl_enabled,
+    };
   }
 
   async getExistingProducts(shopId: string): Promise<Map<string, ExistingProduct>> {
-    const {data, error} = await this.client
+    const { data, error } = await this.client
       .from('shop_products')
       .select('id, shop_item_id, price')
       .eq('shop_id', shopId);
 
     if (error) {
-      throw new Error(`Nepodařilo se načíst existující nabídky pro shop "${shopId}": ${error.message}`);
+      throw new Error(
+        `Nepodařilo se načíst existující nabídky pro shop "${shopId}": ${error.message}`,
+      );
     }
 
     const map = new Map<string, ExistingProduct>();
     for (const row of data ?? []) {
-      map.set(row.shop_item_id, {id: row.id, price: row.price});
+      map.set(row.shop_item_id, { id: row.id, price: row.price });
     }
     return map;
   }
@@ -95,16 +104,16 @@ export class SupabaseImportRepository implements ImportRepository {
       url: item.url,
       image_url: item.imgUrl ?? null,
       ean: item.ean ?? null,
-      in_stock: true,
+      in_stock: item.inStock ?? true,
       delivery_days: item.deliveryDays ?? null,
       category_text: item.categoryText ?? null,
       raw: item,
       last_seen_at: now.toISOString(),
     }));
 
-    const {data, error} = await this.client
+    const { data, error } = await this.client
       .from('shop_products')
-      .upsert(rows, {onConflict: 'shop_id,shop_item_id'})
+      .upsert(rows, { onConflict: 'shop_id,shop_item_id' })
       .select('id, shop_item_id');
 
     if (error) {
@@ -119,13 +128,13 @@ export class SupabaseImportRepository implements ImportRepository {
   }
 
   async insertPriceHistory(
-    entries: {shopProductId: string; price: number; inStock: boolean}[],
+    entries: { shopProductId: string; price: number; inStock: boolean }[],
   ): Promise<void> {
     if (entries.length === 0) {
       return;
     }
 
-    const {error} = await this.client.from('price_history').insert(
+    const { error } = await this.client.from('price_history').insert(
       entries.map((entry) => ({
         shop_product_id: entry.shopProductId,
         price: entry.price,
@@ -139,9 +148,9 @@ export class SupabaseImportRepository implements ImportRepository {
   }
 
   async markStaleOutOfStock(shopId: string, cutoff: Date): Promise<number> {
-    const {data, error} = await this.client
+    const { data, error } = await this.client
       .from('shop_products')
-      .update({in_stock: false})
+      .update({ in_stock: false })
       .eq('shop_id', shopId)
       .lt('last_seen_at', cutoff.toISOString())
       .select('id');
@@ -166,21 +175,49 @@ export async function openFeedStream(feedUrl: string): Promise<Readable> {
   return createReadStream(feedUrl);
 }
 
+export type RunImportDependencies = {
+  fetchFeed?: (feedUrl: string) => Promise<Readable>;
+  crawlShop?: (baseUrl: string) => AsyncGenerator<FeedItem>;
+};
+
+function resolveItemSource(shop: Shop, deps: RunImportDependencies): AsyncGenerator<FeedItem> {
+  if (shop.sourceType === 'crawl') {
+    if (!shop.crawlEnabled || !shop.baseUrl) {
+      throw new Error(
+        `Shop "${shop.id}" nemá povolený crawl (crawl_enabled=${shop.crawlEnabled}, base_url=${shop.baseUrl ?? 'null'}). Import se nespustí.`,
+      );
+    }
+    const crawl = deps.crawlShop ?? crawlShop;
+    return crawl(shop.baseUrl);
+  }
+
+  if (!shop.feedPermission || !shop.feedUrl) {
+    throw new Error(
+      `Shop "${shop.id}" nemá povolený import feedu (feed_permission=${shop.feedPermission}, feed_url=${shop.feedUrl ?? 'null'}). Import se nespustí.`,
+    );
+  }
+
+  const fetchFeed = deps.fetchFeed ?? openFeedStream;
+  const feedUrl = shop.feedUrl;
+  async function* fromFeed() {
+    const stream = await fetchFeed(feedUrl);
+    yield* parseHeurekaFeed(stream);
+  }
+  return fromFeed();
+}
+
 export async function runImport(
   shopId: string,
   repository: ImportRepository,
-  fetchFeed: (feedUrl: string) => Promise<Readable> = openFeedStream,
+  deps: RunImportDependencies = {},
   now: Date = new Date(),
 ): Promise<ImportSummary> {
   const shop = await repository.getShop(shopId);
   if (!shop) {
     throw new Error(`Shop "${shopId}" v Supabase neexistuje.`);
   }
-  if (!shop.feedPermission || !shop.feedUrl) {
-    throw new Error(
-      `Shop "${shopId}" nemá povolený import feedu (feed_permission=${shop.feedPermission}, feed_url=${shop.feedUrl ?? 'null'}). Import se nespustí.`,
-    );
-  }
+
+  const items = resolveItemSource(shop, deps);
 
   const existing = await repository.getExistingProducts(shopId);
 
@@ -194,7 +231,6 @@ export async function runImport(
     errors: 0,
   };
 
-  const stream = await fetchFeed(shop.feedUrl);
   let batch: FeedItem[] = [];
 
   const flushBatch = async () => {
@@ -205,7 +241,7 @@ export async function runImport(
     try {
       const idsByItem = await repository.upsertProducts(shopId, batch, now);
 
-      const priceHistoryEntries: {shopProductId: string; price: number; inStock: boolean}[] = [];
+      const priceHistoryEntries: { shopProductId: string; price: number; inStock: boolean }[] = [];
       for (const item of batch) {
         const shopProductId = idsByItem.get(item.itemId);
         if (!shopProductId) {
@@ -218,10 +254,18 @@ export async function runImport(
 
         if (!previous) {
           summary.newItems += 1;
-          priceHistoryEntries.push({shopProductId, price: newPrice, inStock: true});
+          priceHistoryEntries.push({
+            shopProductId,
+            price: newPrice,
+            inStock: item.inStock ?? true,
+          });
         } else if (previous.price !== newPrice) {
           summary.priceChanges += 1;
-          priceHistoryEntries.push({shopProductId, price: newPrice, inStock: true});
+          priceHistoryEntries.push({
+            shopProductId,
+            price: newPrice,
+            inStock: item.inStock ?? true,
+          });
         }
       }
 
@@ -234,7 +278,7 @@ export async function runImport(
     batch = [];
   };
 
-  for await (const item of parseHeurekaFeed(stream)) {
+  for await (const item of items) {
     summary.totalInFeed += 1;
 
     if (!isRelevantItem(item)) {
@@ -263,7 +307,9 @@ function printSummary(summary: ImportSummary): void {
   console.log(`Relevantních:            ${summary.relevant}`);
   console.log(`Nových:                  ${summary.newItems}`);
   console.log(`Změněných cen:           ${summary.priceChanges}`);
-  console.log(`Označeno jako nedostupné (>${STALE_AFTER_DAYS} dny neviděno): ${summary.markedOutOfStock}`);
+  console.log(
+    `Označeno jako nedostupné (>${STALE_AFTER_DAYS} dny neviděno): ${summary.markedOutOfStock}`,
+  );
   console.log(`Chyb:                    ${summary.errors}`);
 }
 
