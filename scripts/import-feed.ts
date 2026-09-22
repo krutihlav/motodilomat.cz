@@ -190,21 +190,36 @@ export type RunImportDependencies = {
   crawlShop?: (baseUrl: string) => AsyncGenerator<FeedItem>;
 };
 
-function resolveItemSource(shop: Shop, deps: RunImportDependencies): AsyncGenerator<FeedItem> {
+/**
+ * `enforceGate` chrání zápisy (runImport) - vyžaduje feed_permission/crawl_enabled.
+ * runDryRun ho vypíná: dry-run nic nezapisuje, naopak slouží k ověření
+ * zdroje předtím, než se gate vůbec zapne.
+ */
+function resolveItemSource(
+  shop: Shop,
+  deps: RunImportDependencies,
+  enforceGate: boolean,
+): AsyncGenerator<FeedItem> {
   if (shop.sourceType === 'crawl') {
-    if (!shop.crawlEnabled || !shop.baseUrl) {
+    if (enforceGate && (!shop.crawlEnabled || !shop.baseUrl)) {
       throw new Error(
         `Shop "${shop.id}" nemá povolený crawl (crawl_enabled=${shop.crawlEnabled}, base_url=${shop.baseUrl ?? 'null'}). Import se nespustí.`,
       );
+    }
+    if (!shop.baseUrl) {
+      throw new Error(`Shop "${shop.id}" nemá vyplněný base_url.`);
     }
     const crawl = deps.crawlShop ?? crawlShop;
     return crawl(shop.baseUrl);
   }
 
-  if (!shop.feedPermission || !shop.feedUrl) {
+  if (enforceGate && !shop.feedPermission) {
     throw new Error(
       `Shop "${shop.id}" nemá povolený import feedu (feed_permission=${shop.feedPermission}, feed_url=${shop.feedUrl ?? 'null'}). Import se nespustí.`,
     );
+  }
+  if (!shop.feedUrl) {
+    throw new Error(`Shop "${shop.id}" nemá vyplněný feed_url.`);
   }
 
   const fetchFeed = deps.fetchFeed ?? openFeedStream;
@@ -228,7 +243,7 @@ export async function runImport(
     throw new Error(`Shop "${shopId}" v Supabase neexistuje.`);
   }
 
-  const items = resolveItemSource(shop, deps);
+  const items = resolveItemSource(shop, deps, true);
 
   const existing = await repository.getExistingProducts(shopId);
 
@@ -337,7 +352,7 @@ export async function runDryRun(
     throw new Error(`Shop "${shopId}" v Supabase neexistuje.`);
   }
 
-  const items = resolveItemSource(shop, deps);
+  const items = resolveItemSource(shop, deps, false);
   const source = shop.sourceType === 'crawl' ? 'crawl' : `feed (${shop.feedFormat})`;
 
   const summary: DryRunSummary = {
