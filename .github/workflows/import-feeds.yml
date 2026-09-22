@@ -6,6 +6,11 @@ on:
     - cron: '0 13 * * *'
     - cron: '0 20 * * *'
   workflow_dispatch:
+  # DOČASNÉ: push trigger jen pro ruční ověření pipeline na této větvi, protože
+  # workflow_dispatch vyžaduje soubor už zaregistrovaný na výchozí větvi.
+  # Odstranit před mergem do main (viz KROK 6 ověřovacího promptu).
+  push:
+    branches: [phase-2-import-pipeline]
 
 jobs:
   import:
