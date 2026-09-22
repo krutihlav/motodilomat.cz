@@ -8,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "import-feed": "tsx scripts/import-feed.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
@@ -16,19 +18,24 @@
     "lucide-react": "^0.546.0",
     "next": "^16.3.5",
     "react": "^19.0.1",
-    "react-dom": "^19.0.1"
+    "react-dom": "^19.0.1",
+    "sax": "^1.6.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/sax": "^1.2.7",
     "@vercel/node": "^3.2.0",
     "eslint": "^9",
     "eslint-config-next": "^16.3.5",
     "eslint-config-prettier": "^9.1.0",
     "prettier": "^3.4.2",
     "tailwindcss": "^4.3.3",
-    "typescript": "^5.9.3"
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
   }
 }

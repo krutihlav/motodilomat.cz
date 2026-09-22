@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- TESTOVACÍ FIXTURE - vymyšlená data, žádný reálný e-shop, jen pro unit testy pipeline. -->
+<SHOP>
+<SHOPITEM>
+<ITEM_ID>TEST-001</ITEM_ID>
+<PRODUCTNAME>Karburátor Jikov 2917 pro Jawa 350</PRODUCTNAME>
+<PRICE_VAT>1290</PRICE_VAT>
+<URL>https://testovaci-eshop.example/karburator-jikov-2917</URL>
+<IMGURL>https://testovaci-eshop.example/img/test-001.jpg</IMGURL>
+<EAN>8590000000011</EAN>
+<DELIVERY_DATE>2</DELIVERY_DATE>
+<CATEGORYTEXT>Motor | Karburátor</CATEGORYTEXT>
+<DESCRIPTION>Testovací položka - karburátor pro Jawu 350.</DESCRIPTION>
+</SHOPITEM>
+<SHOPITEM>
+<ITEM_ID>TEST-002</ITEM_ID>
+<PRODUCTNAME>Zapalovací cívka ČZ 175</PRODUCTNAME>
+<PRICE_VAT>450</PRICE_VAT>
+<URL>https://testovaci-eshop.example/zapalovaci-civka-cz-175</URL>
+<IMGURL>https://testovaci-eshop.example/img/test-002.jpg</IMGURL>
+<EAN>8590000000028</EAN>
+<DELIVERY_DATE>1</DELIVERY_DATE>
+<CATEGORYTEXT>Elektro | Zapalování</CATEGORYTEXT>
+<DESCRIPTION>Testovací položka - zapalovací cívka pro ČZ 175.</DESCRIPTION>
+</SHOPITEM>
+<SHOPITEM>
+<ITEM_ID>TEST-003</ITEM_ID>
+<PRODUCTNAME>Řetěz pohonu Babetta 207</PRODUCTNAME>
+<PRICE_VAT>310</PRICE_VAT>
+<URL>https://testovaci-eshop.example/retez-babetta-207</URL>
+<EAN>8590000000035</EAN>
+<DELIVERY_DATE>3</DELIVERY_DATE>
+<CATEGORYTEXT>Motor | Převody</CATEGORYTEXT>
+</SHOPITEM>
+<SHOPITEM>
+<ITEM_ID>TEST-004</ITEM_ID>
+<PRODUCTNAME>Zadní blatník Pionýr Stadion S11</PRODUCTNAME>
+<PRICE_VAT>890</PRICE_VAT>
+<URL>https://testovaci-eshop.example/blatnik-pionyr-stadion-s11</URL>
+<IMGURL>https://testovaci-eshop.example/img/test-004.jpg</IMGURL>
+<DELIVERY_DATE>5</DELIVERY_DATE>
+<CATEGORYTEXT>Karoserie | Blatníky</CATEGORYTEXT>
+</SHOPITEM>
+<SHOPITEM>
+<ITEM_ID>TEST-005</ITEM_ID>
+<PRODUCTNAME>Sedlo pro Pérák rám</PRODUCTNAME>
+<PRICE_VAT>1590</PRICE_VAT>
+<URL>https://testovaci-eshop.example/sedlo-perak</URL>
+<EAN>8590000000042</EAN>
+<CATEGORYTEXT>Podvozek | Sedla</CATEGORYTEXT>
+</SHOPITEM>
+<SHOPITEM>
+<ITEM_ID>TEST-006</ITEM_ID>
+<PRODUCTNAME>Výfuk pro Kývačka</PRODUCTNAME>
+<PRICE_VAT>2190</PRICE_VAT>
+<URL>https://testovaci-eshop.example/vyfuk-kyvacka</URL>
+<IMGURL>https://testovaci-eshop.example/img/test-006.jpg</IMGURL>
+<DELIVERY_DATE>4</DELIVERY_DATE>
+<CATEGORYTEXT>Motor | Výfuky</CATEGORYTEXT>
+</SHOPITEM>
+<SHOPITEM>
+<ITEM_ID>TEST-007</ITEM_ID>
+<PRODUCTNAME>Kožené sedlo Panelka</PRODUCTNAME>
+<PRICE_VAT>1990</PRICE_VAT>
+<URL>https://testovaci-eshop.example/sedlo-panelka</URL>
+<CATEGORYTEXT>Karoserie | Sedla</CATEGORYTEXT>
+</SHOPITEM>
+<SHOPITEM>
+<ITEM_ID>TEST-008</ITEM_ID>
+<PRODUCTNAME>Karburátor pro Mustang M175</PRODUCTNAME>
+<PRICE_VAT>1350</PRICE_VAT>
+<URL>https://testovaci-eshop.example/karburator-mustang-m175</URL>
+<IMGURL>https://testovaci-eshop.example/img/test-008.jpg</IMGURL>
+<EAN>8590000000059</EAN>
+<DELIVERY_DATE>2</DELIVERY_DATE>
+<CATEGORYTEXT>Motor | Karburátor</CATEGORYTEXT>
+</SHOPITEM>
+<SHOPITEM>
+<ITEM_ID>TEST-009</ITEM_ID>
+<PRODUCTNAME>Helma pro motorku KTM</PRODUCTNAME>
+<PRICE_VAT>2490</PRICE_VAT>
+<URL>https://testovaci-eshop.example/helma-ktm</URL>
+<IMGURL>https://testovaci-eshop.example/img/test-009.jpg</IMGURL>
+<CATEGORYTEXT>Příslušenství | Helmy</CATEGORYTEXT>
+<DESCRIPTION>Testovací položka - irelevantní produkt pro jinou značku.</DESCRIPTION>
+</SHOPITEM>
+<SHOPITEM>
+<ITEM_ID>TEST-010</ITEM_ID>
+<PRODUCTNAME>Brzdové destičky Honda CBR 600</PRODUCTNAME>
+<PRICE_VAT>790</PRICE_VAT>
+<URL>https://testovaci-eshop.example/brzdy-honda-cbr-600</URL>
+<CATEGORYTEXT>Brzdy | Destičky</CATEGORYTEXT>
+<DESCRIPTION>Testovací položka - irelevantní produkt pro jinou značku.</DESCRIPTION>
+</SHOPITEM>
+</SHOP>

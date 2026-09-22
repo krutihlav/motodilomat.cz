@@ -1,0 +1,47 @@
+name: Import feedů e-shopů
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+    - cron: '0 13 * * *'
+    - cron: '0 20 * * *'
+  workflow_dispatch:
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    env:
+      # createServiceRoleClient() čte NEXT_PUBLIC_SUPABASE_URL - GitHub Actions
+      # běží mimo Vercel, takže URL a service role klíč jdou zvlášť z GH Secrets.
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Import feedy pro shopy s aktivním svolením
+        run: |
+          set -e
+          mapfile -t SHOP_IDS < <(npx tsx scripts/list-active-feed-shops.ts)
+
+          if [ "${#SHOP_IDS[@]}" -eq 0 ]; then
+            echo "žádné shopy s aktivním feedem"
+            exit 0
+          fi
+
+          status=0
+          for shop_id in "${SHOP_IDS[@]}"; do
+            echo "::group::Import feedu pro shop: $shop_id"
+            if ! npx tsx scripts/import-feed.ts "$shop_id"; then
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+
+          exit "$status"
