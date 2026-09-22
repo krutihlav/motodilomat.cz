@@ -1,0 +1,56 @@
+name: Interní import ověřených shopů + diagnostika sitemap
+
+on:
+  workflow_dispatch:
+
+jobs:
+  import-verified-shops:
+    runs-on: ubuntu-latest
+    env:
+      # createServiceRoleClient() čte NEXT_PUBLIC_SUPABASE_URL - GitHub Actions
+      # běží mimo Vercel, takže URL a service role klíč jdou zvlášť z GH Secrets.
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: 'Import 4 ověřených shopů (--internal: bez ohledu na crawl_enabled, jen interně)'
+        run: |
+          set -e
+          for shop in motokramek jawa-korda javarna motojelinek; do
+            echo "::group::Import: $shop"
+            npx tsx scripts/import-feed.ts "$shop" --internal
+            echo "::endgroup::"
+          done
+
+      - name: Souhrn importu pro každý shop
+        run: |
+          set -e
+          for shop in motokramek jawa-korda javarna motojelinek; do
+            echo "::group::Souhrn: $shop"
+            npx tsx scripts/summarize-shop-import.ts "$shop"
+            echo "::endgroup::"
+          done
+
+  sitemap-diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Diagnostika robots.txt a běžných cest k sitemapě
+        run: |
+          for domain in fichtlkramek.cz partdeck.cz mvdily.cz; do
+            echo "=== $domain ==="
+            echo "-- robots.txt --"
+            curl -sL --max-time 15 "https://www.$domain/robots.txt" | head -30
+            echo "-- zkusit běžné cesty k sitemapě --"
+            for path in /sitemap.xml /sitemap_index.xml /sitemap-products.xml /product-sitemap.xml; do
+              code=$(curl -sL --max-time 15 -o /dev/null -w "%{http_code}" "https://www.$domain$path")
+              echo "$path -> $code"
+            done
+          done
