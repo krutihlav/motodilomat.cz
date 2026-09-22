@@ -1,15 +1,9 @@
 import {isLaunched} from '@/lib/config';
+import ComingSoon from '@/components/ComingSoon';
 
 export default function HomePage() {
   if (!isLaunched) {
-    return (
-      <main className="flex min-h-screen flex-col items-center justify-center px-6 text-center">
-        <h1 className="text-2xl font-semibold">Připravujeme</h1>
-        <p className="mt-2 text-sm text-gray-500">
-          Next.js kostra pro Fázi 1 – veřejný obsah zatím není zapnutý.
-        </p>
-      </main>
-    );
+    return <ComingSoon />;
   }
 
   // TODO: Fáze 4 – plný veřejný katalog.

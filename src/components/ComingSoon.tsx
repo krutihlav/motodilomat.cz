@@ -1,12 +1,14 @@
+'use client';
+
 import {type FormEvent, useState} from 'react';
 import {Wrench, Scale, PackageSearch, Truck} from 'lucide-react';
-import {siteConfig, CONSENT_TEXT} from './config';
+import {siteConfig, CONSENT_TEXT} from '@/config';
 
 type FormStatus = 'idle' | 'sending' | 'success' | 'error';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export default function App() {
+export default function ComingSoon() {
   const [email, setEmail] = useState('');
   const [company, setCompany] = useState('');
   const [status, setStatus] = useState<FormStatus>('idle');
