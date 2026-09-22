@@ -109,12 +109,16 @@ export default function ComingSoon() {
                     autoComplete="email"
                     className="w-full flex-1 rounded-lg border border-[#3A322A] bg-[#171310] px-4 py-3 text-[#F5EFE6] placeholder:text-[#8A8074] focus:border-[#D4A017] focus:outline-none focus:ring-1 focus:ring-[#D4A017]"
                   />
-                  <div className="hidden" aria-hidden="true">
-                    <label htmlFor="company">Firma</label>
+                  <div
+                    className="absolute left-[-9999px] w-px h-px overflow-hidden"
+                    aria-hidden="true"
+                    tabIndex={-1}
+                  >
                     <input
                       id="company"
                       name="company"
                       type="text"
+                      aria-hidden="true"
                       tabIndex={-1}
                       autoComplete="off"
                       value={company}
@@ -153,7 +157,8 @@ export default function ComingSoon() {
 
       <footer className="px-6 py-8 text-center text-xs text-[#8A8074]">
         <p>
-          Provozovatel: {siteConfig.operatorName}, IČO: {siteConfig.ico}, kontakt: {siteConfig.contactEmail}
+          Provozovatel: {siteConfig.firstName} {siteConfig.lastName} – kontakt: {siteConfig.contactEmail}
+          {siteConfig.ico && `, IČO: ${siteConfig.ico}`}. Nekomerční projekt v přípravě.
         </p>
       </footer>
     </div>

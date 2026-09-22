@@ -1,7 +1,16 @@
-export const siteConfig = {
-  operatorName: 'Adam [PŘÍJMENÍ]',
-  ico: '[IČO]',
-  contactEmail: '[E-MAIL]',
+interface SiteConfig {
+  firstName: string;
+  lastName: string;
+  contactEmail: string;
+  /** Doplnit až při zahájení monetizace (CPC/affiliate). Do té doby web nevydělává,
+   *  takže IČO ve footeru ani v zásadách ochrany osobních údajů nemusí být uvedené. */
+  ico?: string;
+}
+
+export const siteConfig: SiteConfig = {
+  firstName: 'Adam',
+  lastName: 'Kment',
+  contactEmail: 'adas.kment@gmail.com',
 };
 
 export const CONSENT_TEXT =
