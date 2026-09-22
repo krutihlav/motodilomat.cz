@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
-    "import-feed": "tsx scripts/import-feed.ts"
+    "import-feed": "tsx scripts/import-feed.ts",
+    "probe-shops": "tsx scripts/probe-shops.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
