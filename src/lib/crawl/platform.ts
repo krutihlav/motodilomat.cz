@@ -5,7 +5,10 @@ type PlatformSignature = { platform: Platform; patterns: RegExp[] };
 /**
  * Heuristická detekce platformy podle HTML a hlaviček. Není to exaktní věda -
  * cíl je odlišit pár nejčastějších platforem u českých e-shopů pro účely
- * probe-shops.ts přehledu, ne 100% spolehlivá fingerprint databáze.
+ * probe-shops.ts přehledu, ne 100% spolehlivá fingerprint databáze. Pořadí
+ * signatur je záměrné - konkrétnější/méně obvyklé platformy jdou první, ať
+ * je nepřebije obecnější shoda (např. WooCommerce běží na wp-content/themes,
+ * což by jinak mohlo chytit i cizí motivy).
  */
 const SIGNATURES: PlatformSignature[] = [
   {
@@ -15,6 +18,40 @@ const SIGNATURES: PlatformSignature[] = [
       /shoptet-scripts/i,
       /data-shoptet/i,
       /"generator"\s*content="Shoptet/i,
+      /shoptet-livechat/i,
+      /window\.shoptet/i,
+    ],
+  },
+  {
+    platform: 'upgates',
+    patterns: [
+      /cdn\.upgates\.com/i,
+      /data-upgates/i,
+      /"generator"\s*content="Upgates/i,
+      /window\.UPGATES/i,
+    ],
+  },
+  {
+    platform: 'eshop-rychle',
+    patterns: [/eshop-rychle\.cz/i, /"generator"\s*content="Eshop.?Rychle/i],
+  },
+  {
+    platform: 'prestashop',
+    patterns: [
+      /content=["']PrestaShop/i,
+      /\/modules\/prestashop/i,
+      /var\s+prestashop\s*=/i,
+      /id=["']prestashop["']/i,
+      /\/themes\/[^"']+\/assets\/cache/i,
+    ],
+  },
+  {
+    platform: 'opencart',
+    patterns: [
+      /index\.php\?route=product/i,
+      /catalog\/view\/theme/i,
+      /Powered By OpenCart/i,
+      /catalog\/view\/javascript\/common/i,
     ],
   },
   {
@@ -25,14 +62,6 @@ const SIGNATURES: PlatformSignature[] = [
       /content=["']WooCommerce/i,
       /wp-content\/themes\//i,
     ],
-  },
-  {
-    platform: 'prestashop',
-    patterns: [/content=["']PrestaShop/i, /\/modules\/prestashop/i, /var prestashop\s*=/i],
-  },
-  {
-    platform: 'opencart',
-    patterns: [/index\.php\?route=product/i, /catalog\/view\/theme/i, /Powered By OpenCart/i],
   },
 ];
 

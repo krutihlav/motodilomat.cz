@@ -1,21 +1,21 @@
-name: Probe shopů pro crawl
+name: Dry-run importu feedu
 
 on:
   workflow_dispatch:
     inputs:
       shop_id:
-        description: 'ID shopu k proběhnutí (shops.id). Prázdné = všechny shopy s base_url.'
-        required: false
+        description: 'ID shopu (shops.id)'
+        required: true
+        default: 'motomax'
 
 jobs:
-  probe:
+  dry-run:
     runs-on: ubuntu-latest
     env:
       # createServiceRoleClient() čte NEXT_PUBLIC_SUPABASE_URL - GitHub Actions
       # běží mimo Vercel, takže URL a service role klíč jdou zvlášť z GH Secrets.
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      SHOP_ID: ${{ inputs.shop_id }}
     steps:
       - uses: actions/checkout@v4
 
@@ -26,5 +26,5 @@ jobs:
 
       - run: npm ci
 
-      - name: Probe shopů s vyplněným base_url
-        run: npx tsx scripts/probe-shops.ts
+      - name: 'Dry-run: stáhne a naparsuje zdroj, nic nezapisuje'
+        run: npx tsx scripts/import-feed.ts "${{ inputs.shop_id }}" --dry-run

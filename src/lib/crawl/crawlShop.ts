@@ -10,6 +10,7 @@ function toFeedItem(product: CrawledProduct): FeedItem {
     itemId: product.url,
     productName: product.name,
     priceVat: product.priceVat,
+    priceCurrency: product.priceCurrency,
     url: product.url,
     imgUrl: product.imageUrl,
     ean: product.ean,

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:g="http://base.google.com/ns/1.0" version="2.0">
+<channel>
+<title>MOTOMAX</title>
+<link>https://www.motomax.cz</link>
+<description>Feed pro Google Nákupy</description>
+<item>
+<g:id>TEST-001</g:id>
+<title>Karburátor Jikov 2917 pro Jawa 350</title>
+<link>https://www.motomax.cz/karburator-jikov-2917</link>
+<description>Originální karburátor Jikov 2917 pro motocykly Jawa 350.</description>
+<g:image_link>https://www.motomax.cz/img/test-001.jpg</g:image_link>
+<g:price>1290.00 CZK</g:price>
+<g:availability>in stock</g:availability>
+<g:gtin>8590000000011</g:gtin>
+<g:mpn>05-11-010</g:mpn>
+<g:product_type>Motor &gt; Karburátor</g:product_type>
+<g:brand>Jikov</g:brand>
+<g:condition>new</g:condition>
+</item>
+<item>
+<g:id>TEST-002</g:id>
+<title>Zapalovací cívka ČZ 175</title>
+<link>https://www.motomax.cz/zapalovaci-civka-cz-175</link>
+<g:price>590,00 CZK</g:price>
+<g:availability>out of stock</g:availability>
+<g:mpn>353-12-001</g:mpn>
+</item>
+<item>
+<g:id>TEST-003</g:id>
+<title>Položka bez ceny - má se přeskočit</title>
+<link>https://www.motomax.cz/bez-ceny</link>
+<g:availability>in stock</g:availability>
+</item>
+<item>
+<g:id>TEST-004</g:id>
+<title>Řetěz Simson S51</title>
+<link>https://www.motomax.cz/retez-simson-s51</link>
+<g:price>350.00 CZK</g:price>
+</item>
+</channel>
+</rss>

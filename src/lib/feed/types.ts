@@ -6,6 +6,7 @@ export type FeedItem = {
   itemId: string;
   productName: string;
   priceVat: number;
+  priceCurrency?: string;
   url: string;
   imgUrl?: string;
   ean?: string;

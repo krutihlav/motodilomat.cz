@@ -4,9 +4,17 @@ import { Readable } from 'node:stream';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createServiceRoleClient } from '../src/lib/supabase/server';
 import { parseHeurekaFeed } from '../src/lib/feed/parseHeurekaFeed';
+import { parseGoogleFeed } from '../src/lib/feed/parseGoogleFeed';
 import { isRelevantItem } from '../src/lib/feed/relevanceFilter';
 import type { FeedItem } from '../src/lib/feed/types';
 import { crawlShop } from '../src/lib/crawl/crawlShop';
+
+type FeedFormat = 'heureka' | 'google';
+
+const FEED_PARSERS: Record<FeedFormat, (stream: Readable) => AsyncGenerator<FeedItem>> = {
+  heureka: parseHeurekaFeed,
+  google: parseGoogleFeed,
+};
 
 const CHUNK_SIZE = 200;
 const STALE_AFTER_DAYS = 3;
@@ -25,6 +33,7 @@ type Shop = {
   id: string;
   sourceType: 'feed' | 'crawl';
   feedUrl: string | null;
+  feedFormat: FeedFormat;
   feedPermission: boolean;
   baseUrl: string | null;
   crawlEnabled: boolean;
@@ -55,7 +64,7 @@ export class SupabaseImportRepository implements ImportRepository {
   async getShop(shopId: string): Promise<Shop | null> {
     const { data, error } = await this.client
       .from('shops')
-      .select('id, source_type, feed_url, feed_permission, base_url, crawl_enabled')
+      .select('id, source_type, feed_url, feed_format, feed_permission, base_url, crawl_enabled')
       .eq('id', shopId)
       .maybeSingle();
 
@@ -70,6 +79,7 @@ export class SupabaseImportRepository implements ImportRepository {
       id: data.id,
       sourceType: data.source_type,
       feedUrl: data.feed_url,
+      feedFormat: (data.feed_format ?? 'heureka') as FeedFormat,
       feedPermission: data.feed_permission,
       baseUrl: data.base_url,
       crawlEnabled: data.crawl_enabled,
@@ -199,9 +209,10 @@ function resolveItemSource(shop: Shop, deps: RunImportDependencies): AsyncGenera
 
   const fetchFeed = deps.fetchFeed ?? openFeedStream;
   const feedUrl = shop.feedUrl;
+  const parseFeed = FEED_PARSERS[shop.feedFormat];
   async function* fromFeed() {
     const stream = await fetchFeed(feedUrl);
-    yield* parseHeurekaFeed(stream);
+    yield* parseFeed(stream);
   }
   return fromFeed();
 }
@@ -300,6 +311,80 @@ export async function runImport(
   return summary;
 }
 
+export type DryRunSummary = {
+  shopId: string;
+  source: string;
+  totalInFeed: number;
+  relevant: number;
+  samples: FeedItem[];
+};
+
+const DRY_RUN_SAMPLE_SIZE = 10;
+
+/**
+ * Stáhne a naparsuje zdroj (feed nebo crawl) stejně jako runImport, ale nic
+ * nezapisuje do Supabase - jen spočítá total/relevant a uloží prvních pár
+ * relevantních položek jako ukázku. Používá se k ručnímu ověření nového
+ * feed_format/crawl zdroje předtím, než se pro shop zapne feed_permission/crawl_enabled.
+ */
+export async function runDryRun(
+  shopId: string,
+  repository: Pick<ImportRepository, 'getShop'>,
+  deps: RunImportDependencies = {},
+): Promise<DryRunSummary> {
+  const shop = await repository.getShop(shopId);
+  if (!shop) {
+    throw new Error(`Shop "${shopId}" v Supabase neexistuje.`);
+  }
+
+  const items = resolveItemSource(shop, deps);
+  const source = shop.sourceType === 'crawl' ? 'crawl' : `feed (${shop.feedFormat})`;
+
+  const summary: DryRunSummary = {
+    shopId,
+    source,
+    totalInFeed: 0,
+    relevant: 0,
+    samples: [],
+  };
+
+  for await (const item of items) {
+    summary.totalInFeed += 1;
+
+    if (!isRelevantItem(item)) {
+      continue;
+    }
+
+    summary.relevant += 1;
+    if (summary.samples.length < DRY_RUN_SAMPLE_SIZE) {
+      summary.samples.push(item);
+    }
+  }
+
+  return summary;
+}
+
+function printDryRunSummary(summary: DryRunSummary): void {
+  console.log('--- Dry-run importu (nic se nezapisuje) ---');
+  console.log(`Shop:                    ${summary.shopId}`);
+  console.log(`Zdroj:                   ${summary.source}`);
+  console.log(`Položek celkem:          ${summary.totalInFeed}`);
+  console.log(`Relevantních:            ${summary.relevant}`);
+  console.log(`--- Ukázka (max ${DRY_RUN_SAMPLE_SIZE} relevantních) ---`);
+
+  summary.samples.forEach((item, index) => {
+    const stock =
+      item.inStock === undefined ? 'neznámo' : item.inStock ? 'skladem' : 'není skladem';
+    console.log(
+      `${index + 1}. ${item.productName} — ${item.priceVat} ${item.priceCurrency ?? 'Kč'} — ${stock} — ${item.url}`,
+    );
+  });
+
+  if (summary.samples.length === 0) {
+    console.log('(žádná relevantní položka)');
+  }
+}
+
 function printSummary(summary: ImportSummary): void {
   console.log('--- Souhrn importu ---');
   console.log(`Shop:                    ${summary.shopId}`);
@@ -314,15 +399,24 @@ function printSummary(summary: ImportSummary): void {
 }
 
 async function main() {
-  const shopId = process.argv[2];
+  const args = process.argv.slice(2);
+  const dryRun = args.includes('--dry-run');
+  const shopId = args.find((arg) => !arg.startsWith('--'));
+
   if (!shopId) {
-    console.error('Použití: tsx scripts/import-feed.ts <shop_id>');
+    console.error('Použití: tsx scripts/import-feed.ts <shop_id> [--dry-run]');
     process.exit(1);
   }
 
   const repository = new SupabaseImportRepository(createServiceRoleClient());
 
   try {
+    if (dryRun) {
+      const summary = await runDryRun(shopId, repository);
+      printDryRunSummary(summary);
+      return;
+    }
+
     const summary = await runImport(shopId, repository);
     printSummary(summary);
     if (summary.errors > 0) {

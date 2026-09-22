@@ -21,4 +21,22 @@ describe('detectPlatform', () => {
   it('returns unknown for a plain page with no platform signatures', () => {
     expect(detectPlatform('<html><body>Nic zvláštního</body></html>')).toBe('unknown');
   });
+
+  it('detects Upgates from CDN and window global', () => {
+    expect(detectPlatform('<script src="https://cdn.upgates.com/x.js"></script>')).toBe('upgates');
+    expect(detectPlatform('<script>window.UPGATES = {};</script>')).toBe('upgates');
+  });
+
+  it('detects Eshop-rychle from its domain signature', () => {
+    expect(detectPlatform('<script src="https://123456.s1.eshop-rychle.cz/x.js"></script>')).toBe(
+      'eshop-rychle',
+    );
+  });
+
+  it('detects PrestaShop and OpenCart', () => {
+    expect(detectPlatform('<meta name="generator" content="PrestaShop 8.1">')).toBe('prestashop');
+    expect(detectPlatform('<a href="index.php?route=product/product&product_id=1">x</a>')).toBe(
+      'opencart',
+    );
+  });
 });

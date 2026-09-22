@@ -1,4 +1,5 @@
 import { CRAWL_USER_AGENT, fetchText, waitForRateLimit } from './httpClient';
+import type { Budget } from './requestBudget';
 
 export type RobotsRules = {
   /** Disallow pravidla platná pro nás (User-agent: MotodilomatBot nebo *). */
@@ -124,25 +125,47 @@ export function isAllowed(rules: RobotsRules, pathname: string): boolean {
   return bestMatch?.allowed ?? true;
 }
 
+/**
+ * 'found'     - robots.txt stažen a naparsován (2xx/3xx).
+ * 'not_found' - server řekl, že tam žádný není (404, nebo jiná 4xx jako by nebyl).
+ * 'unknown'   - nešlo zjistit (timeout/síťová chyba, nebo 5xx) - nespoléhat na crawlAllowed.
+ */
+export type RobotsStatus = 'found' | 'not_found' | 'unknown';
+
 export type RobotsCheck = {
-  fetched: boolean;
+  status: RobotsStatus;
   rules: RobotsRules;
+  /** Best-effort odhad - u 'unknown' je to jen "nemáme důvod nekrawlovat", ne záruka. */
   crawlAllowed: boolean;
 };
 
-/** Stáhne a naparsuje /robots.txt pro danou base URL. Chybějící robots.txt = vše povoleno. */
-export async function fetchRobots(baseUrl: string): Promise<RobotsCheck> {
+const EMPTY_RULES: RobotsRules = { disallow: [], allow: [], sitemaps: [] };
+
+/**
+ * Stáhne a naparsuje /robots.txt pro danou base URL.
+ * 404 (a jiné 4xx) = robots.txt neexistuje = vše povoleno ('not_found').
+ * Timeout/síťová chyba/5xx = nevíme ('unknown') - crawlAllowed zůstává true
+ * jako best-effort, ale volající by to měl v reportu odlišit od 'found'.
+ */
+export async function fetchRobots(baseUrl: string, budget?: Budget): Promise<RobotsCheck> {
   const robotsUrl = new URL('/robots.txt', baseUrl);
   await waitForRateLimit(robotsUrl.hostname);
 
   const response = await fetchText(robotsUrl.toString(), {
     headers: { 'User-Agent': CRAWL_USER_AGENT },
   });
+  budget?.consume();
 
-  if (!response || response.status >= 400) {
-    return { fetched: false, rules: { disallow: [], allow: [], sitemaps: [] }, crawlAllowed: true };
+  if (!response) {
+    return { status: 'unknown', rules: EMPTY_RULES, crawlAllowed: true };
+  }
+  if (response.status >= 500) {
+    return { status: 'unknown', rules: EMPTY_RULES, crawlAllowed: true };
+  }
+  if (response.status >= 400) {
+    return { status: 'not_found', rules: EMPTY_RULES, crawlAllowed: true };
   }
 
   const rules = parseRobots(response.text);
-  return { fetched: true, rules, crawlAllowed: isAllowed(rules, '/') };
+  return { status: 'found', rules, crawlAllowed: isAllowed(rules, '/') };
 }
