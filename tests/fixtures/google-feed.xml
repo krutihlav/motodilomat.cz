@@ -38,5 +38,21 @@
 <link>https://www.motomax.cz/retez-simson-s51</link>
 <g:price>350.00 CZK</g:price>
 </item>
+<item>
+<g:id>TEST-005-CERNA</g:id>
+<title>Sedlo Jawa 350 - černé</title>
+<link>https://www.motomax.cz/sedlo-jawa-350-cerne</link>
+<g:price>890.00 CZK</g:price>
+<g:availability>in stock</g:availability>
+<g:item_group_id>SEDLO-JAWA-350</g:item_group_id>
+</item>
+<item>
+<g:id>TEST-005-HNEDA</g:id>
+<title>Sedlo Jawa 350 - hnědé</title>
+<link>https://www.motomax.cz/sedlo-jawa-350-hnede</link>
+<g:price>890.00 CZK</g:price>
+<g:availability>in stock</g:availability>
+<g:item_group_id>SEDLO-JAWA-350</g:item_group_id>
+</item>
 </channel>
 </rss>

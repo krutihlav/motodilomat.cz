@@ -1,8 +1,8 @@
-import {createReadStream} from 'node:fs';
+import { createReadStream } from 'node:fs';
 import path from 'node:path';
-import {describe, expect, it} from 'vitest';
-import {parseGoogleFeed} from '../../src/lib/feed/parseGoogleFeed';
-import type {FeedItem} from '../../src/lib/feed/types';
+import { describe, expect, it } from 'vitest';
+import { parseGoogleFeed } from '../../src/lib/feed/parseGoogleFeed';
+import type { FeedItem } from '../../src/lib/feed/types';
 
 const FIXTURE_PATH = path.join(__dirname, '..', 'fixtures', 'google-feed.xml');
 
@@ -17,7 +17,13 @@ async function readFixtureItems(): Promise<FeedItem[]> {
 describe('parseGoogleFeed', () => {
   it('skips items missing a required field (g:price) and keeps the rest', async () => {
     const items = await readFixtureItems();
-    expect(items.map((item) => item.itemId)).toEqual(['TEST-001', 'TEST-002', 'TEST-004']);
+    expect(items.map((item) => item.itemId)).toEqual([
+      'TEST-001',
+      'TEST-002',
+      'TEST-004',
+      'TEST-005-CERNA',
+      'TEST-005-HNEDA',
+    ]);
   });
 
   it('maps Google Merchant fields onto FeedItem, splitting price and currency', async () => {
@@ -56,5 +62,20 @@ describe('parseGoogleFeed', () => {
 
     expect(retez?.inStock).toBeUndefined();
     expect(retez?.priceVat).toBe(350);
+  });
+
+  it('extracts g:item_group_id so variants can be linked together', async () => {
+    const items = await readFixtureItems();
+    const cerna = items.find((item) => item.itemId === 'TEST-005-CERNA');
+    const hneda = items.find((item) => item.itemId === 'TEST-005-HNEDA');
+
+    expect(cerna?.itemGroupId).toBe('SEDLO-JAWA-350');
+    expect(hneda?.itemGroupId).toBe('SEDLO-JAWA-350');
+  });
+
+  it('leaves itemGroupId undefined for items without g:item_group_id', async () => {
+    const items = await readFixtureItems();
+    const karburator = items.find((item) => item.itemId === 'TEST-001');
+    expect(karburator?.itemGroupId).toBeUndefined();
   });
 });

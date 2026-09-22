@@ -16,4 +16,6 @@ export type FeedItem = {
   description?: string;
   /** Chybí u feedu (feed obsahuje jen skladové položky) - undefined se bere jako true. */
   inStock?: boolean;
+  /** g:item_group_id (Google Merchant) - spojuje varianty (velikost/barva/...) jednoho produktu. */
+  itemGroupId?: string;
 };

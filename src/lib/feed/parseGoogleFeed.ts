@@ -19,6 +19,7 @@ const ELEMENT_MAP: Partial<Record<string, keyof FeedItem>> = {
   MPN: 'mpn',
   PRODUCT_TYPE: 'categoryText',
   DESCRIPTION: 'description',
+  ITEM_GROUP_ID: 'itemGroupId',
 };
 
 type PartialFeedItem = { [K in keyof FeedItem]?: FeedItem[K] };
