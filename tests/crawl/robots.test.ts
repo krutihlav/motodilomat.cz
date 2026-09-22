@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { isAllowed, parseRobots } from '../../src/lib/crawl/robots';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fetchRobots, isAllowed, parseRobots } from '../../src/lib/crawl/robots';
+import { resetRateLimiter } from '../../src/lib/crawl/httpClient';
 
 describe('parseRobots', () => {
   it('parses disallow/allow/sitemap for a wildcard group', () => {
@@ -48,5 +49,51 @@ describe('isAllowed', () => {
     const rules = parseRobots('User-agent: *\nDisallow: /produkt/\nAllow: /produkt/verejny/');
     expect(isAllowed(rules, '/produkt/verejny/x')).toBe(true);
     expect(isAllowed(rules, '/produkt/skryty/x')).toBe(false);
+  });
+});
+
+describe('fetchRobots', () => {
+  beforeEach(() => {
+    resetRateLimiter();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('maps a 404 to status "not_found" with crawlAllowed=true', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 404 })));
+
+    const result = await fetchRobots('https://example.com');
+    expect(result.status).toBe('not_found');
+    expect(result.crawlAllowed).toBe(true);
+  });
+
+  it('maps a 5xx response to status "unknown", not "not_found"', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 503 })));
+
+    const result = await fetchRobots('https://example.com');
+    expect(result.status).toBe('unknown');
+    expect(result.crawlAllowed).toBe(true);
+  });
+
+  it('maps a network failure (timeout) to status "unknown"', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')));
+
+    const result = await fetchRobots('https://example.com');
+    expect(result.status).toBe('unknown');
+    expect(result.crawlAllowed).toBe(true);
+  });
+
+  it('parses a fetched robots.txt and reports status "found"', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('User-agent: *\nDisallow: /admin/', { status: 200 })),
+    );
+
+    const result = await fetchRobots('https://example.com');
+    expect(result.status).toBe('found');
+    expect(result.crawlAllowed).toBe(true);
+    expect(isAllowed(result.rules, '/admin/x')).toBe(false);
   });
 });

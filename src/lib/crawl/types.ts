@@ -12,4 +12,5 @@ export type CrawledProduct = {
   description?: string;
 };
 
-export type Platform = 'shoptet' | 'woocommerce' | 'prestashop' | 'opencart' | 'unknown';
+export type Platform =
+  'shoptet' | 'upgates' | 'eshop-rychle' | 'woocommerce' | 'prestashop' | 'opencart' | 'unknown';
