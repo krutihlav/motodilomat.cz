@@ -37,15 +37,43 @@ export type FetchTextOptions = {
   headers?: Record<string, string>;
 };
 
+export type NetworkErrorKind = 'timeout' | 'dns' | 'other';
+
+/** DNS chyba (ENOTFOUND/EAI_AGAIN) vs. timeout/spojení odmítnuto vs. cokoliv jiného. */
+export function classifyNetworkError(err: unknown): NetworkErrorKind {
+  if (err instanceof Error && err.name === 'AbortError') {
+    return 'timeout';
+  }
+
+  const code =
+    (err as { code?: string } | undefined)?.code ??
+    (err as { cause?: { code?: string } } | undefined)?.cause?.code;
+
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    return 'dns';
+  }
+  if (code === 'ETIMEDOUT' || code === 'ECONNRESET' || code === 'ECONNREFUSED') {
+    return 'timeout';
+  }
+
+  return 'other';
+}
+
+export type FetchOutcome =
+  | { ok: true; status: number; text: string; headers: Headers }
+  | { ok: false; kind: NetworkErrorKind; message: string };
+
 /**
  * GET requestu s User-Agentem, timeoutem a max. `maxRetries` opakováními
  * (bez čekání na rate-limit - to řeší volající přes waitForRateLimit, protože
- * ví, kdy je vhodné dělat requesty souběžně na jiné domény).
+ * ví, kdy je vhodné dělat requesty souběžně na jiné domény). Na rozdíl od
+ * fetchText nezahazuje důvod selhání - vrátí ho klasifikovaný
+ * (timeout/dns/other), což probe-shops.ts potřebuje pro sloupec "dosažitelnost".
  */
-export async function fetchText(
+export async function fetchWithDiagnostics(
   url: string,
   options: FetchTextOptions = {},
-): Promise<{ status: number; text: string; headers: Headers } | null> {
+): Promise<FetchOutcome> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxRetries = options.maxRetries ?? MAX_RETRIES;
 
@@ -70,7 +98,7 @@ export async function fetchText(
       }
 
       const text = await response.text();
-      return { status: response.status, text, headers: response.headers };
+      return { ok: true, status: response.status, text, headers: response.headers };
     } catch (err) {
       lastError = err;
       if (attempt >= maxRetries) {
@@ -82,5 +110,20 @@ export async function fetchText(
   }
 
   console.error(`Crawl fetch selhal pro "${url}":`, lastError);
-  return null;
+  return {
+    ok: false,
+    kind: classifyNetworkError(lastError),
+    message: lastError instanceof Error ? lastError.message : String(lastError),
+  };
+}
+
+/** Zpětně kompatibilní zkratka - zahazuje diagnostiku, na null selhání stačí většině volajících. */
+export async function fetchText(
+  url: string,
+  options: FetchTextOptions = {},
+): Promise<{ status: number; text: string; headers: Headers } | null> {
+  const outcome = await fetchWithDiagnostics(url, options);
+  return outcome.ok
+    ? { status: outcome.status, text: outcome.text, headers: outcome.headers }
+    : null;
 }

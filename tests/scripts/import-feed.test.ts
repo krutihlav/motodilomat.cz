@@ -22,6 +22,21 @@ function makeRepository(shop: FakeShop | null): ImportRepository {
   };
 }
 
+function makeSpyRepository(shop: FakeShop | null) {
+  const upsertedItems: unknown[] = [];
+  const repository: ImportRepository = {
+    getShop: async () => shop as never,
+    getExistingProducts: async () => new Map(),
+    upsertProducts: async (shopId, items) => {
+      upsertedItems.push(...items);
+      return new Map(items.map((item) => [item.itemId, `id-${item.itemId}`]));
+    },
+    insertPriceHistory: async () => {},
+    markStaleOutOfStock: async () => 0,
+  };
+  return { repository, upsertedItems };
+}
+
 const GOOGLE_FEED_XML = `<?xml version="1.0"?>
 <rss xmlns:g="http://base.google.com/ns/1.0" version="2.0">
 <channel>
@@ -88,5 +103,26 @@ describe('runImport', () => {
     await expect(
       runImport(shop.id, makeRepository(shop), { fetchFeed: fakeFetchFeed }),
     ).rejects.toThrow(/nemá povolený import feedu/);
+  });
+
+  it('--internal (enforceGate:false) actually writes even when feed_permission is false', async () => {
+    const shop: FakeShop = {
+      id: 'motomax',
+      sourceType: 'feed',
+      feedUrl: 'https://www.motomax.cz/google.xml',
+      feedFormat: 'google',
+      feedPermission: false,
+      baseUrl: 'https://www.motomax.cz',
+      crawlEnabled: false,
+    };
+
+    const { repository, upsertedItems } = makeSpyRepository(shop);
+
+    const summary = await runImport(shop.id, repository, { fetchFeed: fakeFetchFeed }, new Date(), {
+      enforceGate: false,
+    });
+
+    expect(summary.newItems).toBe(1);
+    expect(upsertedItems).toHaveLength(1);
   });
 });

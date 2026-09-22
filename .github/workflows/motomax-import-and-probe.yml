@@ -1,0 +1,50 @@
+name: MOTOMAX import (interní) + probe zbylých shopů
+
+on:
+  workflow_dispatch:
+
+jobs:
+  import-motomax:
+    runs-on: ubuntu-latest
+    env:
+      # createServiceRoleClient() čte NEXT_PUBLIC_SUPABASE_URL - GitHub Actions
+      # běží mimo Vercel, takže URL a service role klíč jdou zvlášť z GH Secrets.
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: 'Import MOTOMAX (--internal: bez ohledu na feed_permission, jen interně)'
+        run: npx tsx scripts/import-feed.ts motomax --internal
+
+      - name: Souhrn importu (počty, dostupnost, ceny, item_group_id varianty)
+        run: npx tsx scripts/summarize-shop-import.ts motomax
+
+      - name: Namátková kontrola 20 náhodných položek
+        run: npx tsx scripts/spot-check-motomax.ts
+
+  probe-remaining-shops:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      EXCLUDE_SHOP_IDS: motomax
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Probe shopů s base_url kromě motomax
+        run: npx tsx scripts/probe-shops.ts

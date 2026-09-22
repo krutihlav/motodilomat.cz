@@ -232,18 +232,29 @@ function resolveItemSource(
   return fromFeed();
 }
 
+export type RunImportOptions = {
+  /**
+   * false = spustí skutečný import (zapisuje do shop_products) i bez
+   * feed_permission/crawl_enabled. Určeno jen pro `--internal` - jednorázové
+   * interní ověření zdroje na produkčních datech, ne pro pravidelný cron
+   * (ten vždy volá s enforceGate=true, výchozí hodnotou).
+   */
+  enforceGate?: boolean;
+};
+
 export async function runImport(
   shopId: string,
   repository: ImportRepository,
   deps: RunImportDependencies = {},
   now: Date = new Date(),
+  options: RunImportOptions = {},
 ): Promise<ImportSummary> {
   const shop = await repository.getShop(shopId);
   if (!shop) {
     throw new Error(`Shop "${shopId}" v Supabase neexistuje.`);
   }
 
-  const items = resolveItemSource(shop, deps, true);
+  const items = resolveItemSource(shop, deps, options.enforceGate ?? true);
 
   const existing = await repository.getExistingProducts(shopId);
 
@@ -416,10 +427,11 @@ function printSummary(summary: ImportSummary): void {
 async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
+  const internal = args.includes('--internal');
   const shopId = args.find((arg) => !arg.startsWith('--'));
 
   if (!shopId) {
-    console.error('Použití: tsx scripts/import-feed.ts <shop_id> [--dry-run]');
+    console.error('Použití: tsx scripts/import-feed.ts <shop_id> [--dry-run|--internal]');
     process.exit(1);
   }
 
@@ -432,7 +444,17 @@ async function main() {
       return;
     }
 
-    const summary = await runImport(shopId, repository);
+    if (internal) {
+      console.warn(
+        `⚠️  --internal: import shopu "${shopId}" BEZ ohledu na feed_permission/crawl_enabled. ` +
+          'Zapisuje se do shop_products, ale data zůstávají neveřejná (is_public default false, ' +
+          'žádná anon select policy). Jen pro interní ověření zdroje před domluvou s e-shopem.',
+      );
+    }
+
+    const summary = await runImport(shopId, repository, {}, new Date(), {
+      enforceGate: !internal,
+    });
     printSummary(summary);
     if (summary.errors > 0) {
       process.exitCode = 1;
