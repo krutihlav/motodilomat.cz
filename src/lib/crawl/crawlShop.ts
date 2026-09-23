@@ -3,7 +3,8 @@ import type { CrawledProduct } from './types';
 import { fetchRobots, isAllowed } from './robots';
 import { fetchText, waitForRateLimit } from './httpClient';
 import { fetchSitemapUrls, resolveSitemapUrls } from './sitemap';
-import { extractProduct } from './jsonld';
+import { extractProductEvidence } from './productEvidence';
+import type { MicrodataProduct } from './microdata';
 import { RequestBudget, type Budget } from './requestBudget';
 import { detectPlatform } from './platform';
 import { isLikelyProductUrl } from './productUrl';
@@ -34,12 +35,41 @@ function toFeedItem(product: CrawledProduct): FeedItem {
 }
 
 /**
+ * Microdata extraktor negarantuje `name`/`priceVat` na typové úrovni (obojí
+ * je v MicrodataProduct volitelné), i když extractMicrodataProduct() bez
+ * ceny vrací null - u name žádnou takovou záruku nedává. Vrací null, pokud
+ * chybí buď jedno, stejně jako mapProductNode() u JSON-LD.
+ */
+function microdataToCrawledProduct(
+  product: MicrodataProduct,
+  pageUrl: string,
+): CrawledProduct | null {
+  if (!product.name || product.priceVat === undefined) {
+    return null;
+  }
+
+  return {
+    url: product.url ?? pageUrl,
+    name: product.name,
+    priceVat: product.priceVat,
+    priceCurrency: product.priceCurrency,
+    inStock: product.inStock,
+    imageUrl: product.imageUrl,
+    sku: product.sku,
+    mpn: product.mpn,
+    ean: product.ean,
+    description: product.description,
+  };
+}
+
+/**
  * Crawlne e-shop od `baseUrl`: zjistí platformu z homepage, najde sitemapu,
  * vyfiltruje a zamíchá produktové URL (stejný postup jako probe-shops.ts) a
- * pro každou, u které jde stránka stáhnout a obsahuje JSON-LD Product,
- * vyprodukuje FeedItem. Respektuje robots.txt (nedovolené URL přeskočí),
- * rate limit 1 request / 3 s / doménu (viz httpClient.ts) a `maxRequests`
- * (viz DEFAULT_MAX_REQUESTS_PER_SHOP výše).
+ * pro každou, u které jde stránka stáhnout a obsahuje JSON-LD nebo aspoň
+ * microdata Product (viz extractProductEvidence - stejná priorita jako
+ * probe-shops.ts), vyprodukuje FeedItem. Respektuje robots.txt (nedovolené
+ * URL přeskočí), rate limit 1 request / 3 s / doménu (viz httpClient.ts) a
+ * `maxRequests` (viz DEFAULT_MAX_REQUESTS_PER_SHOP výše).
  */
 export async function* crawlShop(
   baseUrl: string,
@@ -98,9 +128,14 @@ export async function* crawlShop(
       continue;
     }
 
-    const product = extractProduct(response.text, productUrl);
-    if (product) {
-      yield toFeedItem(product);
+    const evidence = extractProductEvidence(response.text, productUrl);
+    if (evidence?.kind === 'jsonld') {
+      yield toFeedItem(evidence.product);
+    } else if (evidence?.kind === 'microdata') {
+      const product = microdataToCrawledProduct(evidence.product, productUrl);
+      if (product) {
+        yield toFeedItem(product);
+      }
     }
   }
 }
