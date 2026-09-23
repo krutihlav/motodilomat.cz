@@ -187,18 +187,20 @@ export async function openFeedStream(feedUrl: string): Promise<Readable> {
 
 export type RunImportDependencies = {
   fetchFeed?: (feedUrl: string) => Promise<Readable>;
-  crawlShop?: (baseUrl: string) => AsyncGenerator<FeedItem>;
+  crawlShop?: (baseUrl: string, maxRequests?: number) => AsyncGenerator<FeedItem>;
 };
 
 /**
  * `enforceGate` chrání zápisy (runImport) - vyžaduje feed_permission/crawl_enabled.
  * runDryRun ho vypíná: dry-run nic nezapisuje, naopak slouží k ověření
- * zdroje předtím, než se gate vůbec zapne.
+ * zdroje předtím, než se gate vůbec zapne. `maxRequests` přebíjí
+ * DEFAULT_MAX_REQUESTS_PER_SHOP z crawlShop.ts (viz --max-requests v main()).
  */
 function resolveItemSource(
   shop: Shop,
   deps: RunImportDependencies,
   enforceGate: boolean,
+  maxRequests?: number,
 ): AsyncGenerator<FeedItem> {
   if (shop.sourceType === 'crawl') {
     if (enforceGate && (!shop.crawlEnabled || !shop.baseUrl)) {
@@ -210,7 +212,7 @@ function resolveItemSource(
       throw new Error(`Shop "${shop.id}" nemá vyplněný base_url.`);
     }
     const crawl = deps.crawlShop ?? crawlShop;
-    return crawl(shop.baseUrl);
+    return crawl(shop.baseUrl, maxRequests);
   }
 
   if (enforceGate && !shop.feedPermission) {
@@ -240,6 +242,8 @@ export type RunImportOptions = {
    * (ten vždy volá s enforceGate=true, výchozí hodnotou).
    */
   enforceGate?: boolean;
+  /** Přebije DEFAULT_MAX_REQUESTS_PER_SHOP pro crawlované shopy (viz --max-requests). */
+  maxRequests?: number;
 };
 
 export async function runImport(
@@ -254,7 +258,7 @@ export async function runImport(
     throw new Error(`Shop "${shopId}" v Supabase neexistuje.`);
   }
 
-  const items = resolveItemSource(shop, deps, options.enforceGate ?? true);
+  const items = resolveItemSource(shop, deps, options.enforceGate ?? true, options.maxRequests);
 
   const existing = await repository.getExistingProducts(shopId);
 
@@ -430,8 +434,21 @@ async function main() {
   const internal = args.includes('--internal');
   const shopId = args.find((arg) => !arg.startsWith('--'));
 
+  const maxRequestsArg = args.find((arg) => arg.startsWith('--max-requests='));
+  let maxRequests: number | undefined;
+  if (maxRequestsArg) {
+    const value = Number(maxRequestsArg.slice('--max-requests='.length));
+    if (!Number.isInteger(value) || value <= 0) {
+      console.error(`--max-requests musí být kladné celé číslo, dostal jsem "${maxRequestsArg}".`);
+      process.exit(1);
+    }
+    maxRequests = value;
+  }
+
   if (!shopId) {
-    console.error('Použití: tsx scripts/import-feed.ts <shop_id> [--dry-run|--internal]');
+    console.error(
+      'Použití: tsx scripts/import-feed.ts <shop_id> [--dry-run|--internal] [--max-requests=N]',
+    );
     process.exit(1);
   }
 
@@ -454,6 +471,7 @@ async function main() {
 
     const summary = await runImport(shopId, repository, {}, new Date(), {
       enforceGate: !internal,
+      maxRequests,
     });
     printSummary(summary);
     if (summary.errors > 0) {

@@ -6,6 +6,13 @@ on:
       shop_id:
         description: 'ID shopu k (re)importu (prázdné = všechny 4 ověřené shopy)'
         required: false
+      max_requests:
+        description: 'Strop requestů na shop pro crawlShop (--max-requests), viz DEFAULT_MAX_REQUESTS_PER_SHOP'
+        required: false
+        default: '300'
+        # workflow_dispatch nemá typ "number" (jen string/choice/boolean/environment) -
+        # validace čísla se dělá až v scripts/import-feed.ts.
+        type: string
 
 jobs:
   import-verified-shops:
@@ -16,6 +23,7 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       SHOP_ID: ${{ inputs.shop_id }}
+      MAX_REQUESTS: ${{ inputs.max_requests }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,7 +40,7 @@ jobs:
           SHOPS="${SHOP_ID:-motokramek jawa-korda javarna motojelinek}"
           for shop in $SHOPS; do
             echo "::group::Import: $shop"
-            npx tsx scripts/import-feed.ts "$shop" --internal
+            npx tsx scripts/import-feed.ts "$shop" --internal --max-requests="${MAX_REQUESTS:-300}"
             echo "::endgroup::"
           done
 

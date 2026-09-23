@@ -12,12 +12,14 @@ import { shuffle } from '../util/shuffle';
 
 /**
  * Výchozí strop requestů na shop (robots.txt + sitemapy + produktové stránky
- * dohromady) - při rate limitu 1 req/3s/doménu drží jeden běh crawlShop pod
- * ~2.5 minuty i pro shop s desetitisícovou sitemapou (bez stropu by crawlShop
+ * dohromady) - při rate limitu 1 req/3s/doménu je to ~15 minut/shop, u 4
+ * shopů spuštěných sekvenčně (viz internal-import-verified-shops.yml) tedy
+ * ~60 minut běhu, v mezích timeoutu GH Actions jobu (bez stropu by crawlShop
  * bez filtru product-like URL prošel *celou* sitemapu, což u velkých katalogů
- * znamená hodiny běhu a tisíce requestů na živý web).
+ * znamená hodiny běhu a tisíce requestů na živý web). Lze přebít parametrem
+ * `maxRequests`, viz `--max-requests=N` v scripts/import-feed.ts.
  */
-export const DEFAULT_MAX_REQUESTS_PER_SHOP = 50;
+export const DEFAULT_MAX_REQUESTS_PER_SHOP = 300;
 
 function toFeedItem(product: CrawledProduct): FeedItem {
   return {
