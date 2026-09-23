@@ -3,6 +3,12 @@ export type MicrodataProduct = {
   priceVat?: number;
   priceCurrency?: string;
   inStock?: boolean;
+  url?: string;
+  sku?: string;
+  mpn?: string;
+  ean?: string;
+  imageUrl?: string;
+  description?: string;
 };
 
 /**
@@ -29,6 +35,12 @@ function extractItemprop(scopeHtml: string, itemprop: string): string | undefine
   const hrefMatch = tag.match(/href=["']([^"']+)["']/i);
   if (hrefMatch) {
     return hrefMatch[1].trim();
+  }
+
+  // <img itemprop="image" src="..."> - href/content by samo nechytí.
+  const srcMatch = tag.match(/\bsrc=["']([^"']+)["']/i);
+  if (srcMatch) {
+    return srcMatch[1].trim();
   }
 
   const afterTag = scopeHtml.slice(match.index! + tag.length);
@@ -143,6 +155,13 @@ export function extractMicrodataProduct(html: string): MicrodataProduct | null {
     priceVat,
     priceCurrency: extractItemprop(scope, 'priceCurrency'),
     inStock: parseAvailability(extractItemprop(scope, 'availability')),
+    url: extractItemprop(scope, 'url'),
+    sku: extractItemprop(scope, 'sku'),
+    mpn: extractItemprop(scope, 'mpn'),
+    // gtin13 je konkrétnější (EAN-13) - gtin je obecná schema.org náhrada, použije se jen jako fallback.
+    ean: extractItemprop(scope, 'gtin13') ?? extractItemprop(scope, 'gtin'),
+    imageUrl: extractItemprop(scope, 'image'),
+    description: extractItemprop(scope, 'description'),
   };
 }
 

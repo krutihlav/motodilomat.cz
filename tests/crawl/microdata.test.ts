@@ -75,6 +75,75 @@ describe('extractMicrodataProduct', () => {
     expect(product?.priceVat).toBe(7250);
   });
 
+  it('extracts url/sku/mpn/ean/imageUrl/description alongside name/price', () => {
+    const html = `
+      <div itemscope itemtype="https://schema.org/Product">
+        <span itemprop="name">Karburátor Jikov 2917</span>
+        <link itemprop="url" href="https://motojelinek.cz/p/karburator-jikov-2917" />
+        <span itemprop="sku">JK-2917</span>
+        <span itemprop="mpn">2917-MPN</span>
+        <span itemprop="gtin13">8590000000011</span>
+        <img itemprop="image" src="https://motojelinek.cz/img/2917.jpg" />
+        <span itemprop="description">Karburátor pro Jawu 350.</span>
+        <span itemprop="price" content="1290"></span>
+      </div>
+    `;
+
+    const product = extractMicrodataProduct(html);
+    expect(product).toMatchObject({
+      url: 'https://motojelinek.cz/p/karburator-jikov-2917',
+      sku: 'JK-2917',
+      mpn: '2917-MPN',
+      ean: '8590000000011',
+      imageUrl: 'https://motojelinek.cz/img/2917.jpg',
+      description: 'Karburátor pro Jawu 350.',
+    });
+  });
+
+  it('falls back to itemprop="gtin" when gtin13 is missing', () => {
+    const html = `
+      <div itemscope itemtype="https://schema.org/Product">
+        <span itemprop="name">Řetěz Simson S51</span>
+        <span itemprop="gtin">8590000000035</span>
+        <span itemprop="price" content="350"></span>
+      </div>
+    `;
+
+    expect(extractMicrodataProduct(html)?.ean).toBe('8590000000035');
+  });
+
+  it('reproduces motojelinek.cz-like markup: manually authored microdata s obrázkem a sku, bez samostatného itemprop="url"', () => {
+    // Reálný tvar produktové stránky motojelinek.cz z probe v2 (Fáze 3c) -
+    // vlastní microdata bez JSON-LD, cena/dostupnost v <span content=...>,
+    // obrázek přes <img itemprop="image" src=...>. url musí crawlShop.ts
+    // doplnit z URL stránky (extraktor sám o pageUrl neví).
+    const html = `
+      <html>
+        <body>
+          <div itemscope itemtype="https://schema.org/Product">
+            <h1 itemprop="name">Podsedlové plechy 6 - Jawa 50/550</h1>
+            <img itemprop="image" src="https://www.motojelinek.cz/img/podsedlove-plechy-6.jpg" />
+            <span itemprop="sku">MJ-6550</span>
+            <span itemprop="price" content="7250">7 250 Kč</span>
+            <meta itemprop="priceCurrency" content="CZK" />
+            <link itemprop="availability" href="https://schema.org/InStock" />
+          </div>
+        </body>
+      </html>
+    `;
+
+    const product = extractMicrodataProduct(html);
+    expect(product).toMatchObject({
+      name: 'Podsedlové plechy 6 - Jawa 50/550',
+      priceVat: 7250,
+      priceCurrency: 'CZK',
+      inStock: true,
+      sku: 'MJ-6550',
+      imageUrl: 'https://www.motojelinek.cz/img/podsedlove-plechy-6.jpg',
+    });
+    expect(product?.url).toBeUndefined();
+  });
+
   it('does not leak the closing tag of a nested same-name element as the scope boundary', () => {
     // Vnořené <div> uvnitř Product bloku (běžné v reálném markupu) nesmí
     // ukončit hledání rozsahu předčasně na první </div>.
