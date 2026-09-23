@@ -2,6 +2,10 @@ name: Interní import ověřených shopů + diagnostika sitemap
 
 on:
   workflow_dispatch:
+    inputs:
+      shop_id:
+        description: 'ID shopu k (re)importu (prázdné = všechny 4 ověřené shopy)'
+        required: false
 
 jobs:
   import-verified-shops:
@@ -11,6 +15,7 @@ jobs:
       # běží mimo Vercel, takže URL a service role klíč jdou zvlášť z GH Secrets.
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SHOP_ID: ${{ inputs.shop_id }}
     steps:
       - uses: actions/checkout@v4
 
@@ -21,10 +26,11 @@ jobs:
 
       - run: npm ci
 
-      - name: 'Import 4 ověřených shopů (--internal: bez ohledu na crawl_enabled, jen interně)'
+      - name: 'Import ověřených shopů (--internal: bez ohledu na crawl_enabled, jen interně)'
         run: |
           set -e
-          for shop in motokramek jawa-korda javarna motojelinek; do
+          SHOPS="${SHOP_ID:-motokramek jawa-korda javarna motojelinek}"
+          for shop in $SHOPS; do
             echo "::group::Import: $shop"
             npx tsx scripts/import-feed.ts "$shop" --internal
             echo "::endgroup::"
@@ -33,13 +39,15 @@ jobs:
       - name: Souhrn importu pro každý shop
         run: |
           set -e
-          for shop in motokramek jawa-korda javarna motojelinek; do
+          SHOPS="${SHOP_ID:-motokramek jawa-korda javarna motojelinek}"
+          for shop in $SHOPS; do
             echo "::group::Souhrn: $shop"
             npx tsx scripts/summarize-shop-import.ts "$shop"
             echo "::endgroup::"
           done
 
   sitemap-diagnostics:
+    if: ${{ inputs.shop_id == '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Diagnostika robots.txt a běžných cest k sitemapě
