@@ -71,3 +71,14 @@ jobs:
             head -c 300 /tmp/body.html
             echo
           done
+
+      - name: 'Zkusit běžné cesty k feedu (Shoptet/OpenCart export) pro fichtlkramek/mvdily'
+        run: |
+          for domain in fichtlkramek.cz mvdily.cz; do
+            echo "=== $domain ==="
+            for path in /google.xml /heureka.xml /zbozi.xml /export/google.xml /export/heureka.xml /feed/google.xml; do
+              ct=$(curl -sL --max-time 15 -o /tmp/body -w "%{content_type}" "https://www.$domain$path")
+              size=$(wc -c < /tmp/body)
+              echo "$path -> $ct ($size B)"
+            done
+          done
