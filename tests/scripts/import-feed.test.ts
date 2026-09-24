@@ -125,4 +125,31 @@ describe('runImport', () => {
     expect(summary.newItems).toBe(1);
     expect(upsertedItems).toHaveLength(1);
   });
+
+  it('passes options.maxRequests through to crawlShop for crawl-based shops', async () => {
+    const shop: FakeShop = {
+      id: 'motokramek',
+      sourceType: 'crawl',
+      feedUrl: null,
+      feedFormat: 'heureka',
+      feedPermission: false,
+      baseUrl: 'https://www.motokramek.cz',
+      crawlEnabled: true,
+    };
+
+    let receivedMaxRequests: number | undefined;
+    async function* fakeCrawlShop(_baseUrl: string, maxRequests?: number) {
+      receivedMaxRequests = maxRequests;
+    }
+
+    await runImport(
+      shop.id,
+      makeRepository(shop),
+      { crawlShop: fakeCrawlShop },
+      new Date(),
+      { maxRequests: 300 },
+    );
+
+    expect(receivedMaxRequests).toBe(300);
+  });
 });
