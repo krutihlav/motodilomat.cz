@@ -297,12 +297,15 @@ describe('runImport - refresh known URLs', () => {
     return { repository, state };
   }
 
-  it('fixes names, ignores 404 and still-brand-named pending rows, never touches other statuses', async () => {
+  it('fixes names, ignores 404 and successfully fetched brand-named rows, keeps failed/unprocessed/human-decided rows pending', async () => {
     const { repository, state } = makeRefreshRepository([
       known('fixed', 'CZ'),
       known('gone', 'CZ / HUN'),
       known('irrelevant', 'CZ (Originál)'),
+      known('noproduct', 'CZ'),
       known('error', 'JAWA Moto spol s r. o.'),
+      known('robots', 'CZ'),
+      known('unprocessed', 'CZ'),
       known('manual', 'CZ', { matchStatus: 'manual' }),
       known('matched', 'CZ', { matchStatus: 'auto', partId: 'part-1' }),
       known('ok', 'Kryt spojky Jawa 350'),
@@ -310,19 +313,28 @@ describe('runImport - refresh known URLs', () => {
 
     let receivedUrls: string[] = [];
     let receivedBudget = 0;
+    const id = (name: string) => `https://www.motojelinek.cz/p/${name}`;
     async function* fakeRefresh(_baseUrl: string, urls: { shopItemId: string; url: string }[], max?: number) {
       receivedUrls = urls.map((u) => u.url);
       receivedBudget = max ?? 0;
-      const item = (id: string, productName: string) => ({
+      const item = (name: string, productName: string) => ({
         kind: 'item' as const,
-        shopItemId: `https://www.motojelinek.cz/p/${id}`,
-        url: `https://www.motojelinek.cz/p/${id}`,
-        item: crawlItem(`https://www.motojelinek.cz/p/${id}`, productName, 500),
+        shopItemId: id(name),
+        url: id(name),
+        item: crawlItem(id(name), productName, 500),
+      });
+      const other = (kind: 'not_found' | 'no_product' | 'error' | 'disallowed', name: string) => ({
+        kind,
+        shopItemId: id(name),
+        url: id(name),
       });
       yield item('fixed', 'Ampérmetr 10A - JAWA Pérák, 500 OHC');
-      yield { kind: 'not_found' as const, shopItemId: 'https://www.motojelinek.cz/p/gone', url: 'https://www.motojelinek.cz/p/gone' };
+      yield other('not_found', 'gone');
       yield item('irrelevant', 'Píst 41,25 (čep 12) - Simson S60');
-      yield { kind: 'error' as const, shopItemId: 'https://www.motojelinek.cz/p/error', url: 'https://www.motojelinek.cz/p/error' };
+      yield other('no_product', 'noproduct');
+      yield other('error', 'error');
+      yield other('disallowed', 'robots');
+      // 'unprocessed' a 'manual'/'matched' ve výsledcích nejsou (strop requestů)
       yield item('ok', 'Kryt spojky Jawa 350');
     }
 
@@ -334,17 +346,18 @@ describe('runImport - refresh known URLs', () => {
       { refreshKnownUrls: true, maxRequests: 5 },
     );
 
-    expect(receivedUrls).toHaveLength(7);
-    expect(receivedBudget).toBe(17); // max(5, 7 URL + 10)
+    expect(receivedUrls).toHaveLength(10);
+    expect(receivedBudget).toBe(20); // max(5, 10 URL + 10)
     expect(summary.refresh).toEqual({
-      knownUrls: 7,
-      outcomes: { item: 3, not_found: 1, no_product: 0, error: 1, disallowed: 0 },
+      knownUrls: 10,
+      outcomes: { item: 3, not_found: 1, no_product: 1, error: 1, disallowed: 1 },
       namesFixed: 1,
       ignoredNotFound: 1,
-      // 'irrelevant' (Simson není relevantní -> nepřepsal se, zůstal "CZ (Originál)") + 'error' (pořád značka)
+      // 'irrelevant' (Simson není relevantní -> nepřepsal se) + 'noproduct' (200 bez produktu) - obojí úspěšně staženo
       ignoredBrandName: 2,
     });
-    expect(state.ignored.sort()).toEqual(['row-error', 'row-gone', 'row-irrelevant']);
+    // 'error', 'robots' a 'unprocessed' zůstávají pending, stejně jako manual/auto
+    expect(state.ignored.sort()).toEqual(['row-gone', 'row-irrelevant', 'row-noproduct']);
     expect(state.rows.find((r) => r.id === 'row-fixed')?.name).toBe('Ampérmetr 10A - JAWA Pérák, 500 OHC');
     expect(state.markStale).toBe(0);
   });

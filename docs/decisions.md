@@ -110,9 +110,11 @@ nenasazuje, internal import zůstává jen ruční (`workflow_dispatch`).
 a stropem requestů `max(--max-requests, počet URL + 10)`. Opravené položky
 přepíšou stávající řádek (`itemId`/`url` se berou z uloženého řádku, takže
 nevznikne duplicita). Po běhu se pending řádky bez `part_id`, které vrátily
-404/410 nebo mají pořád název tvořený jen značkou (CZ, JAWA, "JAWA Moto spol
-s r. o." ...), označí `match_status='ignored'`; lidská rozhodnutí
-(manual/auto/rejected) se nemění. `markStaleOutOfStock` se v tomto režimu
+404/410 nebo u kterých se stránka úspěšně stáhla a název zůstal tvořený jen
+značkou (CZ, JAWA, "JAWA Moto spol s r. o." ...), označí
+`match_status='ignored'`. Řádky, u kterých stažení selhalo (timeout, 5xx, DNS,
+robots) nebo na které nedošlo (strop requestů), zůstávají pending pro další
+refresh; lidská rozhodnutí (manual/auto/rejected) se nemění. `markStaleOutOfStock` se v tomto režimu
 nevolá. Název tvořený jen značkou je navíc obecné pravidlo kvality
 (`brand_name` v `itemQuality.ts`).
 

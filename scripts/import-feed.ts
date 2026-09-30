@@ -52,7 +52,7 @@ export type RefreshSummary = {
   namesFixed: number;
   /** Pending řádky označené ignored, protože stránka vrátila 404/410. */
   ignoredNotFound: number;
-  /** Pending řádky označené ignored, protože po refreshi mají pořád název = značka. */
+  /** Pending řádky označené ignored, protože úspěšně stažená stránka má pořád název = značka. */
   ignoredBrandName: number;
 };
 
@@ -380,6 +380,8 @@ type RefreshContext = {
   items: AsyncGenerator<FeedItem>;
   knownById: Map<string, KnownProduct>;
   notFoundItemIds: Set<string>;
+  /** shopItemId URL, které se úspěšně stáhly (produkt nebo stránka bez produktu; 404/410 je zvlášť). */
+  fetchedOkItemIds: Set<string>;
   summary: RefreshSummary;
 };
 
@@ -404,6 +406,7 @@ async function startRefresh(
     ignoredBrandName: 0,
   };
   const notFoundItemIds = new Set<string>();
+  const fetchedOkItemIds = new Set<string>();
   const maxRequests = Math.max(options.maxRequests ?? 0, known.length + 10);
   const refresh = deps.refreshKnownUrls ?? refreshKnownUrls;
 
@@ -414,15 +417,23 @@ async function startRefresh(
       if (outcome.kind === 'not_found') {
         notFoundItemIds.add(outcome.shopItemId);
       } else if (outcome.kind === 'item') {
+        fetchedOkItemIds.add(outcome.shopItemId);
         yield outcome.item;
+      } else if (outcome.kind === 'no_product') {
+        fetchedOkItemIds.add(outcome.shopItemId);
       }
     }
   }
 
-  return { items: items(), knownById, notFoundItemIds, summary };
+  return { items: items(), knownById, notFoundItemIds, fetchedOkItemIds, summary };
 }
 
-/** Po refreshi: pending řádky s 404/410 nebo s názvem pořád rovným značce -> ignored. */
+/**
+ * Po refreshi: pending řádky s 404/410 nebo s názvem pořád rovným značce ->
+ * ignored, ale název = značka jen u úspěšně stažených stránek. Řádky, u
+ * kterých stažení selhalo (timeout, 5xx, DNS, robots) nebo na které nedošlo,
+ * zůstávají pending pro další refresh.
+ */
 async function finishRefresh(
   shopId: string,
   repository: ImportRepository,
@@ -438,7 +449,7 @@ async function finishRefresh(
     if (refresh.notFoundItemIds.has(product.shopItemId)) {
       refresh.summary.ignoredNotFound += 1;
       toIgnore.push(product.id);
-    } else if (isBrandLikeName(product.name)) {
+    } else if (refresh.fetchedOkItemIds.has(product.shopItemId) && isBrandLikeName(product.name)) {
       refresh.summary.ignoredBrandName += 1;
       toIgnore.push(product.id);
     }
