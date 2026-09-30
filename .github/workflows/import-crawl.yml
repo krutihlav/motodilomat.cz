@@ -1,0 +1,61 @@
+name: Import crawlovaných e-shopů
+
+# Crawl zdroje (source_type='crawl') běží 1x denně, feedy zůstávají v
+# import-feeds.yml (3x denně). Crawl je pomalý (rate limit 1 req/3 s/doménu),
+# proto samostatný workflow a vlastní timeout.
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      max_requests:
+        description: 'Strop requestů na shop pro crawlShop (--max-requests)'
+        required: false
+        default: '300'
+        type: string
+
+# Dva souběžné crawly téhož webu by porušily rate limit.
+concurrency:
+  group: import-crawl
+  cancel-in-progress: false
+
+jobs:
+  import-crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      # createServiceRoleClient() čte NEXT_PUBLIC_SUPABASE_URL - GitHub Actions
+      # běží mimo Vercel, takže URL a service role klíč jdou zvlášť z GH Secrets.
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      MAX_REQUESTS: ${{ inputs.max_requests }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Crawl shopů s crawl_enabled=true
+        run: |
+          set -e
+          mapfile -t SHOP_IDS < <(npx tsx scripts/list-active-crawl-shops.ts)
+
+          if [ "${#SHOP_IDS[@]}" -eq 0 ]; then
+            echo "žádné shopy s crawl_enabled=true"
+            exit 0
+          fi
+
+          status=0
+          for shop_id in "${SHOP_IDS[@]}"; do
+            echo "::group::Crawl shopu: $shop_id"
+            if ! npx tsx scripts/import-feed.ts "$shop_id" --max-requests="${MAX_REQUESTS:-300}"; then
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+
+          exit "$status"

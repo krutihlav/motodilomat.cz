@@ -2,8 +2,9 @@
 import {createServiceRoleClient} from '../src/lib/supabase/server';
 
 /**
- * Vypíše (jeden na řádek) id všech shopů s feed_permission=true a vyplněným
- * feed_url. Používá GitHub Actions workflow import-feeds.yml k sestavení
+ * Vypíše (jeden na řádek) id všech shopů se source_type='feed',
+ * feed_permission=true a vyplněným feed_url (crawl zdroje řeší
+ * list-active-crawl-shops.ts). Používá GitHub Actions workflow import-feeds.yml k sestavení
  * seznamu shopů, pro které se spustí import.
  */
 async function main() {
@@ -12,6 +13,7 @@ async function main() {
   const {data, error} = await client
     .from('shops')
     .select('id')
+    .eq('source_type', 'feed')
     .eq('feed_permission', true)
     .not('feed_url', 'is', null);
 

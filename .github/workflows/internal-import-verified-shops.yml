@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       shop_id:
-        description: 'ID shopu k (re)importu (prázdné = všechny 4 ověřené shopy)'
+        description: 'ID shopu k (re)importu (prázdné = motokramek, jawa-korda, motojelinek; javarna je vyřazená - ETIMEDOUT z GH Actions, viz docs/decisions.md)'
         required: false
       max_requests:
         description: 'Strop requestů na shop pro crawlShop (--max-requests), viz DEFAULT_MAX_REQUESTS_PER_SHOP'
@@ -37,7 +37,7 @@ jobs:
       - name: 'Import ověřených shopů (--internal: bez ohledu na crawl_enabled, jen interně)'
         run: |
           set -e
-          SHOPS="${SHOP_ID:-motokramek jawa-korda javarna motojelinek}"
+          SHOPS="${SHOP_ID:-motokramek jawa-korda motojelinek}"
           for shop in $SHOPS; do
             echo "::group::Import: $shop"
             npx tsx scripts/import-feed.ts "$shop" --internal --max-requests="${MAX_REQUESTS:-300}"
@@ -47,7 +47,7 @@ jobs:
       - name: Souhrn importu pro každý shop
         run: |
           set -e
-          SHOPS="${SHOP_ID:-motokramek jawa-korda javarna motojelinek}"
+          SHOPS="${SHOP_ID:-motokramek jawa-korda motojelinek}"
           for shop in $SHOPS; do
             echo "::group::Souhrn: $shop"
             npx tsx scripts/summarize-shop-import.ts "$shop"
