@@ -1,23 +1,23 @@
-import {parseModels, type MatchLevel, type ParseResult} from './parseModels';
-import {CANONICAL_MODELS, type CanonicalModel} from './seed';
+import { parseModels, type MatchLevel, type ParseResult } from './parseModels';
+import { CANONICAL_MODELS, type CanonicalModel } from './seed';
 
 /** Jedna (případně sloučená) položka dry-runu; count = kolik shop_products řádků sdílí název. */
-export type DryRunRow = {shopId: string; name: string; count: number};
+export type DryRunRow = { shopId: string; name: string; count: number };
 
 export type LevelKey = MatchLevel | 'none';
 export const LEVEL_ORDER: LevelKey[] = ['type', 'nickname', 'displacement', 'brand', 'none'];
 
 export const SUSPICIOUS_MODEL_LIMIT = 6;
 
-export type RowResult = DryRunRow & {parse: ParseResult};
+export type RowResult = DryRunRow & { parse: ParseResult };
 
 export type DryRunReport = {
   totalRows: number;
   byShop: Record<string, Record<LevelKey, number>>;
   totals: Record<LevelKey, number>;
   samples: RowResult[];
-  noMatch: {count: number; samples: RowResult[]};
-  unresolved: {brand: string; kind: string; token: string; count: number}[];
+  noMatch: { count: number; samples: RowResult[] };
+  unresolved: { brand: string; kind: string; token: string; count: number }[];
   tooManyModels: RowResult[];
   conflicts: RowResult[];
 };
@@ -71,13 +71,16 @@ export function buildReport(
   const random = seededRandom(options.seed ?? 20260930);
   const results: RowResult[] = rows.map((row) => ({
     ...row,
-    parse: parseModels(row.name, {shopId: row.shopId, models}),
+    parse: parseModels(row.name, { shopId: row.shopId, models }),
   }));
 
   const byShop: Record<string, Record<LevelKey, number>> = {};
   const totals = emptyLevels();
   let totalRows = 0;
-  const unresolvedMap = new Map<string, {brand: string; kind: string; token: string; count: number}>();
+  const unresolvedMap = new Map<
+    string,
+    { brand: string; kind: string; token: string; count: number }
+  >();
 
   for (const result of results) {
     const key: LevelKey = result.parse.level ?? 'none';
@@ -87,7 +90,7 @@ export function buildReport(
     totalRows += result.count;
     for (const token of result.parse.unresolved) {
       const id = `${token.brand}|${token.kind}|${token.token}`;
-      const entry = unresolvedMap.get(id) ?? {...token, count: 0};
+      const entry = unresolvedMap.get(id) ?? { ...token, count: 0 };
       entry.count += result.count;
       unresolvedMap.set(id, entry);
     }
@@ -108,17 +111,29 @@ export function buildReport(
     byShop,
     totals,
     samples: sample(matched, 30, random),
-    noMatch: {count: unmatched.reduce((sum, r) => sum + r.count, 0) + noCueTotal, samples: sample(unmatched, 20, random)},
-    unresolved: [...unresolvedMap.values()].sort((a, b) => b.count - a.count || a.token.localeCompare(b.token)),
+    noMatch: {
+      count: unmatched.reduce((sum, r) => sum + r.count, 0) + noCueTotal,
+      samples: sample(unmatched, 20, random),
+    },
+    unresolved: [...unresolvedMap.values()].sort(
+      (a, b) => b.count - a.count || a.token.localeCompare(b.token),
+    ),
     tooManyModels: results.filter((r) => r.parse.models.length > SUSPICIOUS_MODEL_LIMIT),
-    conflicts: results.filter((r) => findConflict(r.parse.models.map((m) => m.slug), models) !== null),
+    conflicts: results.filter(
+      (r) =>
+        findConflict(
+          r.parse.models.map((m) => m.slug),
+          models,
+        ) !== null,
+    ),
   };
 }
 
-const pct = (part: number, total: number) => (total === 0 ? '0 %' : `${((part / total) * 100).toFixed(1)} %`);
+const pct = (part: number, total: number) =>
+  total === 0 ? '0 %' : `${((part / total) * 100).toFixed(1)} %`;
 
 function describe(result: RowResult): string {
-  const {parse} = result;
+  const { parse } = result;
   const models = parse.models.map((m) => `${m.slug}`).join(', ');
   const generic = parse.generic
     .filter((g) => g.level === parse.level)
@@ -127,7 +142,10 @@ function describe(result: RowResult): string {
   return `${result.name} → ${models || generic || '—'} → ${parse.level ?? 'none'}`;
 }
 
-export function renderReport(report: DryRunReport, models: readonly CanonicalModel[] = CANONICAL_MODELS): string {
+export function renderReport(
+  report: DryRunReport,
+  models: readonly CanonicalModel[] = CANONICAL_MODELS,
+): string {
   const out: string[] = [];
   out.push('# Dry-run: párování dílů podle modelu (nic se nezapisuje)', '');
   out.push(`Celkem pending řádků: **${report.totalRows}**`, '');
@@ -159,15 +177,23 @@ export function renderReport(report: DryRunReport, models: readonly CanonicalMod
   for (const token of report.unresolved.slice(0, 80)) {
     out.push(`| ${token.brand || '—'} | ${token.kind} | ${token.token} | ${token.count} |`);
   }
-  if (report.unresolved.length > 80) out.push(`| … | | dalších ${report.unresolved.length - 80} tokenů | |`);
+  if (report.unresolved.length > 80)
+    out.push(`| … | | dalších ${report.unresolved.length - 80} tokenů | |`);
   out.push('');
 
   out.push('## Podezřelé případy', '');
-  out.push(`### Jeden díl na víc než ${SUSPICIOUS_MODEL_LIMIT} modelů: ${report.tooManyModels.length} názvů`, '');
-  for (const r of report.tooManyModels.slice(0, 30)) out.push(`- ${describe(r)} (${r.parse.models.length} modelů)`);
+  out.push(
+    `### Jeden díl na víc než ${SUSPICIOUS_MODEL_LIMIT} modelů: ${report.tooManyModels.length} názvů`,
+    '',
+  );
+  for (const r of report.tooManyModels.slice(0, 30))
+    out.push(`- ${describe(r)} (${r.parse.models.length} modelů)`);
   out.push('', `### Konflikty mezi řadami: ${report.conflicts.length} názvů`, '');
   for (const r of report.conflicts.slice(0, 30)) {
-    const families = findConflict(r.parse.models.map((m) => m.slug), models);
+    const families = findConflict(
+      r.parse.models.map((m) => m.slug),
+      models,
+    );
     out.push(`- ${describe(r)} [${families?.join(' + ')}]`);
   }
   out.push('');

@@ -124,3 +124,39 @@ motocyklů, automobilů", 1 jawa-korda 99 900 Kč, 1 motojelinek 52 995 Kč) a 2
 
 **MPN u motojelinku obsahuje kódy MVdily** (např. `mvdily0344`) - potenciální
 párovací klíč, až bude MVdily zdroj dat (Tier B' / MPN ↔ kód MVdily).
+
+## 2026-09-30 – Fáze 3: kanonické modely a parser (dry-run)
+
+**Proč ručně:** vazby odvozené z toho, co se v názvech potkává, vedou k chybám
+(sdílené díly ≠ stejný model, analýza zmínek run #7). Modely se seedují ručně
+(`src/lib/models/seed.ts`, zdroj pravdy → migrace `013_seed_models.sql` se
+generuje `npx tsx scripts/generate-models-seed.ts`, test hlídá shodu) a parser
+(`src/lib/models/parseModels.ts`) na ně jen mapuje.
+
+**Schéma (migrace `012`):** `models` = `id`(=slug), `slug`, `brand`, `name`,
+`family` (řada, uvnitř které se rozvíjejí rozsahy), `displacement`,
+`type_numbers`, `aliases`, `needs_verification`, `note` (+ `years`);
+`type_code`/`popular_name` zrušeny. `part_models` + `match_level`
+(`type|nickname|displacement|brand`), `source` (`name|description`),
+`matched_text`. Obě tabulky byly při návrhu prázdné, migrace to hlídá.
+Migrace 012/013 zatím **nejsou aplikované** na DB (ověřeno v transakci s
+rollbackem).
+
+**Seed:** 33 modelů. Typová čísla „ověřit“ nejsou v `type_numbers`, jen v `note`;
+ČZ (355, 450, 453, 455, 470–472, 476, 477, 487, 488) se neseedují, Simson je mimo
+rozsah. Kývačku 175 (typ 356) jsem označil stejnými aliasy jako 250/350 a alias
+`jawa 90` dostal model `jawa-90` (jinak na něj displacement level nevede) –
+obojí k potvrzení.
+
+**Parser:** čísla typů/objemů se berou jen hned za značkou/přezdívkou (včetně
+slepených `jawa350`, `babetta134`); rozsahy (`550-555`, `20-23`, `634 - 640`)
+se rozvíjejí jen přes typy existující v seedu ve stejné řadě; dvouciferné typy
+mimo Jawa 50 (Pérák 11/12) jen s „typ“; desetinná čísla (`58,25`) nejsou typy;
+priorita `type > nickname > displacement > brand`, `displacement`/`brand` **nemají
+vazbu na konkrétní model** (parser vrací jen `generic` zásahy). Motojelinek čte
+modely za posledním `" - "`.
+
+**Dry-run:** `docs/reports/models-dry-run-2026-09-30.md` (nic se nezapsalo do
+`part_models`). Zjištění: `part_models` je klíčované na `parts`, pending
+`shop_products` nemají `part_id`, a `displacement`/`brand` zásahy nemají
+`model_id` – před zápisem je potřeba rozhodnout, co a kam se uloží.

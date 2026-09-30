@@ -331,19 +331,17 @@ export const CANONICAL_MODELS: readonly CanonicalModel[] = [
   },
 
   // --- Babetta ---
-  ...['207', '210', '225', '228'].map(
-    (type): CanonicalModel => ({
-      slug: `babetta-${type}`,
-      brand: 'Babetta',
-      name: `Babetta ${type}`,
-      family: 'Babetta',
-      displacement: null,
-      typeNumbers: [type],
-      aliases: [],
-      needsVerification: false,
-      note: 'Objem doplnit.',
-    }),
-  ),
+  ...['207', '210', '225', '228'].map((type): CanonicalModel => ({
+    slug: `babetta-${type}`,
+    brand: 'Babetta',
+    name: `Babetta ${type}`,
+    family: 'Babetta',
+    displacement: null,
+    typeNumbers: [type],
+    aliases: [],
+    needsVerification: false,
+    note: 'Objem doplnit.',
+  })),
   {
     slug: 'babetta-134',
     brand: 'Babetta',

@@ -1,5 +1,5 @@
-import {describe, expect, it} from 'vitest';
-import {CANONICAL_MODELS} from '../../src/lib/models/seed';
+import { describe, expect, it } from 'vitest';
+import { CANONICAL_MODELS } from '../../src/lib/models/seed';
 
 describe('CANONICAL_MODELS', () => {
   it('má unikátní slugy', () => {
@@ -17,7 +17,15 @@ describe('CANONICAL_MODELS', () => {
 
   it('typová čísla označená „ověřit“ nejsou v type_numbers', () => {
     const find = (slug: string) => CANONICAL_MODELS.find((m) => m.slug === slug)!;
-    for (const slug of ['jawetta', 'jawetta-sport', 'ohc-350', 'ohc-500', 'panelka-250', 'panelka-350', 'cezeta']) {
+    for (const slug of [
+      'jawetta',
+      'jawetta-sport',
+      'ohc-350',
+      'ohc-500',
+      'panelka-250',
+      'panelka-350',
+      'cezeta',
+    ]) {
       expect(find(slug).typeNumbers).toEqual([]);
       expect(find(slug).needsVerification).toBe(true);
     }
@@ -33,12 +41,39 @@ describe('CANONICAL_MODELS', () => {
   it('obsahuje všech 34 modelů ze zadání', () => {
     expect(CANONICAL_MODELS.map((m) => m.slug).sort()).toEqual(
       [
-        'pionyr-550', 'pionyr-555', 'pionyr-05', 'pionyr-20', 'pionyr-21', 'mustang-23',
-        'jawetta', 'jawetta-sport', 'stadion-s11', 'stadion-s22', 'stadion-s23', 'jawa-90',
-        'perak-250', 'perak-350', 'ohc-350', 'ohc-500', 'kyvacka-250', 'kyvacka-350', 'kyvacka-175',
-        'jawa-250-559', 'panelka-250', 'panelka-350', 'jawa-350-634', 'jawa-350-638',
-        'jawa-350-639', 'jawa-350-640', 'velorex-350',
-        'babetta-207', 'babetta-210', 'babetta-225', 'babetta-228', 'babetta-134', 'cezeta',
+        'pionyr-550',
+        'pionyr-555',
+        'pionyr-05',
+        'pionyr-20',
+        'pionyr-21',
+        'mustang-23',
+        'jawetta',
+        'jawetta-sport',
+        'stadion-s11',
+        'stadion-s22',
+        'stadion-s23',
+        'jawa-90',
+        'perak-250',
+        'perak-350',
+        'ohc-350',
+        'ohc-500',
+        'kyvacka-250',
+        'kyvacka-350',
+        'kyvacka-175',
+        'jawa-250-559',
+        'panelka-250',
+        'panelka-350',
+        'jawa-350-634',
+        'jawa-350-638',
+        'jawa-350-639',
+        'jawa-350-640',
+        'velorex-350',
+        'babetta-207',
+        'babetta-210',
+        'babetta-225',
+        'babetta-228',
+        'babetta-134',
+        'cezeta',
       ].sort(),
     );
   });

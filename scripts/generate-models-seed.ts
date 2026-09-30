@@ -5,10 +5,10 @@
  *
  *   npx tsx scripts/generate-models-seed.ts
  */
-import {writeFileSync} from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
-import {renderSeedSql} from '../src/lib/models/seedSql';
+import { fileURLToPath } from 'node:url';
+import { renderSeedSql } from '../src/lib/models/seedSql';
 
 const target = path.join(
   path.dirname(fileURLToPath(import.meta.url)),

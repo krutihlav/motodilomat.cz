@@ -8,8 +8,8 @@
  *   npx tsx scripts/dry-run-models.ts --input rows.txt     # řádky "počet~~shop~~název"
  *       [--no-cue shop=N,shop=N] [--out report.md]
  */
-import {readFileSync, writeFileSync} from 'node:fs';
-import {buildReport, renderReport, type DryRunRow} from '../src/lib/models/dryRunReport';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { buildReport, renderReport, type DryRunRow } from '../src/lib/models/dryRunReport';
 
 const PAGE_SIZE = 1_000;
 
@@ -24,16 +24,16 @@ function readFile(path: string): DryRunRow[] {
     .filter((line) => line.trim() !== '')
     .map((line) => {
       const [count, shopId, ...rest] = line.split('~~');
-      return {shopId, name: rest.join('~~'), count: Number(count)};
+      return { shopId, name: rest.join('~~'), count: Number(count) };
     });
 }
 
 async function readSupabase(): Promise<DryRunRow[]> {
-  const {createServiceRoleClient} = await import('../src/lib/supabase/server');
+  const { createServiceRoleClient } = await import('../src/lib/supabase/server');
   const client = createServiceRoleClient();
   const counts = new Map<string, DryRunRow>();
   for (let from = 0; ; from += PAGE_SIZE) {
-    const {data, error} = await client
+    const { data, error } = await client
       .from('shop_products')
       .select('shop_id, name')
       .eq('match_status', 'pending')
@@ -42,7 +42,11 @@ async function readSupabase(): Promise<DryRunRow[]> {
     if (error) throw new Error(`Načtení shop_products selhalo: ${error.message}`);
     for (const row of data ?? []) {
       const key = `${row.shop_id}~~${row.name}`;
-      const entry = counts.get(key) ?? {shopId: row.shop_id as string, name: row.name as string, count: 0};
+      const entry = counts.get(key) ?? {
+        shopId: row.shop_id as string,
+        name: row.name as string,
+        count: 0,
+      };
       entry.count += 1;
       counts.set(key, entry);
     }
@@ -63,7 +67,7 @@ async function main() {
         return [shop, Number(n)];
       }),
   );
-  const markdown = renderReport(buildReport(rows, {noCueByShop}));
+  const markdown = renderReport(buildReport(rows, { noCueByShop }));
   const out = arg('out');
   if (out) writeFileSync(out, markdown);
   else console.log(markdown);

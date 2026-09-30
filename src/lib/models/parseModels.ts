@@ -1,9 +1,9 @@
-import {CANONICAL_MODELS, type CanonicalModel} from './seed';
+import { CANONICAL_MODELS, type CanonicalModel } from './seed';
 
 /** Úrovně shody od nejsilnější: type > nickname > displacement > brand. */
 export type MatchLevel = 'type' | 'nickname' | 'displacement' | 'brand';
 
-const LEVEL_RANK: Record<MatchLevel, number> = {type: 4, nickname: 3, displacement: 2, brand: 1};
+const LEVEL_RANK: Record<MatchLevel, number> = { type: 4, nickname: 3, displacement: 2, brand: 1 };
 
 /** Vazba na konkrétní kanonický model (level type | nickname). */
 export type ModelHit = {
@@ -96,14 +96,14 @@ const FILLERS = new Set(['typ', 'typy', 'c', 'cislo', 'cisla', 'model', 'a']);
  * Přezdívky, které nemapujeme na model (ověřit), ale chceme je vidět v reportu
  * nerozřešených tokenů. `brand` = token se počítá jen v kontextu té značky.
  */
-const UNRESOLVED_NICKNAMES: {word: string; brand?: string}[] = [
-  {word: 'californian'},
-  {word: 'calif'},
-  {word: 'libenak'},
-  {word: 'ogar'},
-  {word: 'bizon'},
-  {word: 'stella'},
-  {word: 'star', brand: 'Babetta'},
+const UNRESOLVED_NICKNAMES: { word: string; brand?: string }[] = [
+  { word: 'californian' },
+  { word: 'calif' },
+  { word: 'libenak' },
+  { word: 'ogar' },
+  { word: 'bizon' },
+  { word: 'stella' },
+  { word: 'star', brand: 'Babetta' },
 ];
 
 const ALLOWED_BETWEEN_NUMBERS = /^[\s,/\-.]*$/;
@@ -144,7 +144,7 @@ function buildIndex(models: readonly CanonicalModel[]): Index {
       displacementsByBrand.set(model.brand, set);
     }
   }
-  const index = {aliasToModels, maxAliasWords, typeByBrand, displacementsByBrand};
+  const index = { aliasToModels, maxAliasWords, typeByBrand, displacementsByBrand };
   indexCache.set(models, index);
   return index;
 }
@@ -179,14 +179,20 @@ function tokenize(folded: string, index: Index): Token[] {
       if (ch === '(') {
         if (depth === 0) parenId += 1;
         depth += 1;
-      }
-      else if (ch === ')') depth = Math.max(0, depth - 1);
+      } else if (ch === ')') depth = Math.max(0, depth - 1);
     }
     const word = match[0];
     const glued = GLUED_RE.exec(word);
     if (glued) {
       const split = glued[1].length;
-      raw.push({text: glued[1], start: match.index, end: match.index + split, sep, inParen: depth > 0, paren: depth > 0 ? parenId : 0});
+      raw.push({
+        text: glued[1],
+        start: match.index,
+        end: match.index + split,
+        sep,
+        inParen: depth > 0,
+        paren: depth > 0 ? parenId : 0,
+      });
       raw.push({
         text: glued[2],
         start: match.index + split,
@@ -196,7 +202,14 @@ function tokenize(folded: string, index: Index): Token[] {
         paren: depth > 0 ? parenId : 0,
       });
     } else {
-      raw.push({text: word, start: match.index, end: match.index + word.length, sep, inParen: depth > 0, paren: depth > 0 ? parenId : 0});
+      raw.push({
+        text: word,
+        start: match.index,
+        end: match.index + word.length,
+        sep,
+        inParen: depth > 0,
+        paren: depth > 0 ? parenId : 0,
+      });
     }
     prevEnd = match.index + word.length;
   }
@@ -229,13 +242,13 @@ function tokenize(folded: string, index: Index): Token[] {
       continue;
     }
     if (/^\d+$/.test(cur.text)) {
-      tokens.push({...cur, kind: 'NUM'});
+      tokens.push({ ...cur, kind: 'NUM' });
     } else if (BRAND_WORDS[cur.text]) {
-      tokens.push({...cur, kind: 'BRAND', brand: BRAND_WORDS[cur.text]});
+      tokens.push({ ...cur, kind: 'BRAND', brand: BRAND_WORDS[cur.text] });
     } else if (index.aliasToModels.has(cur.text)) {
-      tokens.push({...cur, kind: 'NICK', key: cur.text});
+      tokens.push({ ...cur, kind: 'NICK', key: cur.text });
     } else {
-      tokens.push({...cur, kind: 'WORD'});
+      tokens.push({ ...cur, kind: 'WORD' });
     }
   }
   return markNoiseParens(mergeStadionNumbers(tokens, index));
@@ -256,7 +269,7 @@ function markNoiseParens(tokens: Token[]): Token[] {
     const only = group.every((t) => t.kind === 'BRAND' || t.kind === 'WORD');
     if (only && group.length <= 3 && group.some((t) => t.kind === 'BRAND')) noise.add(id);
   }
-  return tokens.map((t) => ({...t, inParen: t.paren !== 0 && noise.has(t.paren)}));
+  return tokens.map((t) => ({ ...t, inParen: t.paren !== 0 && noise.has(t.paren) }));
 }
 
 const STADION_NUMBERS = new Set(['11', '22', '23']);
@@ -277,7 +290,16 @@ function mergeStadionNumbers(tokens: Token[], index: Index): Token[] {
       if (next && next.kind === 'NUM' && STADION_NUMBERS.has(next.text) && /^\s+$/.test(next.sep)) {
         const key = `s${next.text}`;
         if (index.aliasToModels.has(key)) {
-          out.push({kind: 'NICK', text: key, start: tok.start, end: next.end, sep: tok.sep, inParen: tok.inParen, paren: tok.paren, key});
+          out.push({
+            kind: 'NICK',
+            text: key,
+            start: tok.start,
+            end: next.end,
+            sep: tok.sep,
+            inParen: tok.inParen,
+            paren: tok.paren,
+            key,
+          });
           i += 1;
           continue;
         }
@@ -293,7 +315,16 @@ function mergeStadionNumbers(tokens: Token[], index: Index): Token[] {
     ) {
       const key = `s${tok.text}`;
       if (index.aliasToModels.has(key)) {
-        out.push({kind: 'NICK', text: key, start: tok.start, end: tok.end, sep: tok.sep, inParen: tok.inParen, paren: tok.paren, key});
+        out.push({
+          kind: 'NICK',
+          text: key,
+          start: tok.start,
+          end: tok.end,
+          sep: tok.sep,
+          inParen: tok.inParen,
+          paren: tok.paren,
+          key,
+        });
         continue;
       }
     }
@@ -314,11 +345,16 @@ export function extractModelScope(name: string, shopId?: string): string {
   return name;
 }
 
-/** Zahodí "*Výrobce" značky shopu a kvótované kódy ",,CZ"/",,IT" (původ, ne model). */
+/**
+ * Zahodí "*Výrobce" značky shopu a kvótované kódy původu ",,CZ"/",,IT"/",,TW"
+ * (ne model). ",,ČZ 125/175" (značka + čísla) se ponechá.
+ */
 function cleanForParsing(text: string): string {
   return text
     .replace(/\*\S*/g, (m) => ' '.repeat(m.length))
-    .replace(/,,[A-Za-zČčŽž]{1,3}(?![A-Za-zČčŽž0-9])/g, (m) => ' '.repeat(m.length))
+    .replace(/,,(?!(?:CZ|ČZ)\s+\S)[A-Za-zČčŽž]{1,3}(?![A-Za-zČčŽž0-9])/g, (m) =>
+      ' '.repeat(m.length),
+    )
     .replace(/[„“”"']/g, ' ');
 }
 
@@ -391,12 +427,17 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
     if (tok.kind === 'BRAND') {
       const brand = tok.brand!;
       if (!brandHits.has(brand)) {
-        brandHits.set(brand, {level: 'brand', brand, matchedText: textOf(tok.start, tok.end)});
+        brandHits.set(brand, { level: 'brand', brand, matchedText: textOf(tok.start, tok.end) });
       }
       if (ctx && chainable && ctx.lastKind === 'BRAND') {
         ctx.brands.add(brand);
       } else {
-        ctx = {brands: new Set([brand]), scopeD: new Set(), startOffset: tok.start, lastKind: 'BRAND'};
+        ctx = {
+          brands: new Set([brand]),
+          scopeD: new Set(),
+          startOffset: tok.start,
+          lastKind: 'BRAND',
+        };
       }
       lastNick = null;
       continue;
@@ -408,7 +449,7 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
       if (ctx && chainable) {
         for (const brand of brands) ctx.brands.add(brand);
       } else {
-        ctx = {brands, scopeD: new Set(), startOffset: tok.start, lastKind: 'NICK'};
+        ctx = { brands, scopeD: new Set(), startOffset: tok.start, lastKind: 'NICK' };
       }
       ctx.lastKind = 'NICK';
       const mention: NickMention = {
@@ -423,7 +464,14 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
       };
       // Nelicencované číslo hned před přezdívkou: "500 OHC".
       const prev = tokens[i - 1];
-      if (prev && prev.kind === 'NUM' && !licensed.has(i - 1) && !prev.inParen && /^\s+$/.test(tok.sep) && !tok.inParen) {
+      if (
+        prev &&
+        prev.kind === 'NUM' &&
+        !licensed.has(i - 1) &&
+        !prev.inParen &&
+        /^\s+$/.test(tok.sep) &&
+        !tok.inParen
+      ) {
         const value = Number(prev.text);
         if (!prev.text.startsWith('0') && nickModels.some((m) => m.displacement === value)) {
           mention.adjD.add(value);
@@ -444,7 +492,7 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
       );
       if (unresolvedNick) {
         // Neseedovaná přezdívka: zapsat do reportu, ale řetěz čísel nepřerušuje.
-        unresolved.push({kind: 'nickname', brand: brandsLabel(ctx), token: tok.text});
+        unresolved.push({ kind: 'nickname', brand: brandsLabel(ctx), token: tok.text });
         continue;
       }
       if (ctx && FILLERS.has(tok.text) && chainable) continue;
@@ -458,7 +506,7 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
       continue;
     }
     const brands = ctx.brands;
-    type Item = {idx: number; text: string; typ: boolean};
+    type Item = { idx: number; text: string; typ: boolean };
     const items: Item[] = [];
     let sawTyp = false;
     let j = i;
@@ -484,7 +532,7 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
         endTok = j - 1;
         continue;
       }
-      items.push({idx: j, text: t.text, typ: sawTyp});
+      items.push({ idx: j, text: t.text, typ: sawTyp });
       licensed.add(j);
       endTok = j;
       j += 1;
@@ -515,7 +563,7 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
             for (const type of model.typeNumbers) {
               const value = Number(type);
               if (value > lo && value < hi) {
-                typeHits.set(model.slug, {slug: model.slug, level: 'type', matchedText: span});
+                typeHits.set(model.slug, { slug: model.slug, level: 'type', matchedText: span });
               }
             }
           }
@@ -524,13 +572,14 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
       const model = typeModel(item.text, brands);
       // Dvouciferné typy mimo řadu Jawa 50 (Pérák 11/12) jen s "typ" - jinak by
       // "Pérák 11, 18" byly rozměry.
-      const weak = model !== undefined && item.text.length <= 2 && model.family !== 'Jawa 50' && !item.typ;
+      const weak =
+        model !== undefined && item.text.length <= 2 && model.family !== 'Jawa 50' && !item.typ;
       if (weak) {
         resolvedAsType.push(false);
         continue;
       }
       if (model) {
-        typeHits.set(model.slug, {slug: model.slug, level: 'type', matchedText: span});
+        typeHits.set(model.slug, { slug: model.slug, level: 'type', matchedText: span });
         resolvedAsType.push(true);
         continue;
       }
@@ -540,14 +589,15 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
         ctx.scopeD.add(displacement);
         for (const brand of brands) {
           if (index.displacementsByBrand.get(brand)?.has(displacement)) {
-            generic.push({level: 'displacement', brand, displacement, matchedText: span});
+            generic.push({ level: 'displacement', brand, displacement, matchedText: span });
           }
         }
-        if (lastNick && ctx.lastKind === 'NICK' && firstSepWhitespace) lastNick.adjD.add(displacement);
+        if (lastNick && ctx.lastKind === 'NICK' && firstSepWhitespace)
+          lastNick.adjD.add(displacement);
         continue;
       }
       if (item.text.length >= 3) {
-        unresolved.push({kind: 'number', brand: brandsLabel(ctx), token: item.text});
+        unresolved.push({ kind: 'number', brand: brandsLabel(ctx), token: item.text });
       }
     }
 
@@ -576,7 +626,11 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
     }
     for (const model of selected) {
       if (!nickHits.has(model.slug)) {
-        nickHits.set(model.slug, {slug: model.slug, level: 'nickname', matchedText: mention.text});
+        nickHits.set(model.slug, {
+          slug: model.slug,
+          level: 'nickname',
+          matchedText: mention.text,
+        });
       }
     }
   }
@@ -601,5 +655,5 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
   for (const hit of result) consider(hit.level);
   for (const hit of genericHits) consider(hit.level);
 
-  return {level, models: result, generic: genericHits, unresolved, scope: scopeText};
+  return { level, models: result, generic: genericHits, unresolved, scope: scopeText };
 }

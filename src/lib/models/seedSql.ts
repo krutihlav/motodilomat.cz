@@ -1,4 +1,4 @@
-import {CANONICAL_MODELS, type CanonicalModel} from './seed';
+import { CANONICAL_MODELS, type CanonicalModel } from './seed';
 
 const str = (value: string) => `'${value.replace(/'/g, "''")}'`;
 const nullable = (value: string | number | null) =>
