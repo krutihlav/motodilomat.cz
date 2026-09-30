@@ -90,20 +90,28 @@ const GLUE_PREFIXES = [
 const GLUED_RE = new RegExp(`^(${GLUE_PREFIXES.join('|')})(\\d{2,3})$`);
 
 /** Mezislova mezi značkou/přezdívkou a čísly ("Jawa 350 typ 634"). */
-const FILLERS = new Set(['typ', 'typy', 'c', 'cislo', 'cisla', 'model', 'a']);
+const FILLERS = new Set(['typ', 'typy', 'cislo', 'cisla', 'model', 'a', 'sport']);
+
+/** Písmena typů ČZ 125/150 (A, B, T, C) - jen v kontextu ČZ za objemem. */
+const CZ_LETTER_RE = /^[abtc]$/;
+
+/**
+ * Typy, které se na modely nedají vyjádřit jedním číslem: "354/06" je první 350
+ * Panelka (vedle kyvacka-350 z typu 354).
+ */
+const EXTRA_TYPE_COMBOS = [{ first: '354', second: '06', slugs: ['panelka-350-360'] }];
+
+/** Aliasy, u kterých objem před nimi musí sedět, jinak se nemapují ("350 OHC" = moderní Jawa). */
 
 /**
  * Přezdívky, které nemapujeme na model (ověřit), ale chceme je vidět v reportu
  * nerozřešených tokenů. `brand` = token se počítá jen v kontextu té značky.
  */
 const UNRESOLVED_NICKNAMES: { word: string; brand?: string }[] = [
-  { word: 'californian' },
   { word: 'calif' },
   { word: 'libenak' },
   { word: 'ogar' },
   { word: 'bizon' },
-  { word: 'stella' },
-  { word: 'star', brand: 'Babetta' },
 ];
 
 const ALLOWED_BETWEEN_NUMBERS = /^[\s,/\-.]*$/;
@@ -115,7 +123,10 @@ type Index = {
   aliasToModels: Map<string, CanonicalModel[]>;
   /** největší počet slov aliasu */
   maxAliasWords: number;
-  typeByBrand: Map<string, Map<string, CanonicalModel>>;
+  /** typ -> modely (551 = obě Jawetty, 552 = všechny Stadiony) */
+  typeToModels: Map<string, CanonicalModel[]>;
+  /** "125|B" -> model (ČZ typy označené písmenem) */
+  letterModels: Map<string, CanonicalModel>;
   displacementsByBrand: Map<string, Set<number>>;
 };
 
@@ -125,7 +136,8 @@ function buildIndex(models: readonly CanonicalModel[]): Index {
   const cached = indexCache.get(models);
   if (cached) return cached;
   const aliasToModels = new Map<string, CanonicalModel[]>();
-  const typeByBrand = new Map<string, Map<string, CanonicalModel>>();
+  const typeToModels = new Map<string, CanonicalModel[]>();
+  const letterModels = new Map<string, CanonicalModel>();
   const displacementsByBrand = new Map<string, Set<number>>();
   let maxAliasWords = 1;
   for (const model of models) {
@@ -135,16 +147,20 @@ function buildIndex(models: readonly CanonicalModel[]): Index {
       maxAliasWords = Math.max(maxAliasWords, key.split(' ').length);
       aliasToModels.set(key, [...(aliasToModels.get(key) ?? []), model]);
     }
-    const types = typeByBrand.get(model.brand) ?? new Map<string, CanonicalModel>();
-    for (const type of model.typeNumbers) types.set(type, model);
-    typeByBrand.set(model.brand, types);
+    for (const type of model.typeNumbers) {
+      if (/^[A-Za-z]$/.test(type)) {
+        letterModels.set(`${model.displacement}|${type.toUpperCase()}`, model);
+      } else {
+        typeToModels.set(type, [...(typeToModels.get(type) ?? []), model]);
+      }
+    }
     if (model.displacement != null) {
       const set = displacementsByBrand.get(model.brand) ?? new Set<number>();
       set.add(model.displacement);
       displacementsByBrand.set(model.brand, set);
     }
   }
-  const index = { aliasToModels, maxAliasWords, typeByBrand, displacementsByBrand };
+  const index = { aliasToModels, maxAliasWords, typeToModels, letterModels, displacementsByBrand };
   indexCache.set(models, index);
   return index;
 }
@@ -183,7 +199,23 @@ function tokenize(folded: string, index: Index): Token[] {
     }
     const word = match[0];
     const glued = GLUED_RE.exec(word);
-    if (glued) {
+    const lettered = /^(\d{3})([abtc])$/.exec(word);
+    if (lettered) {
+      // "150c", "125t" -> 150 + C (typ ČZ označený písmenem)
+      for (const [text, from, to, sepPart] of [
+        [lettered[1], 0, 3, sep],
+        [lettered[2], 3, 4, ''],
+      ] as const) {
+        raw.push({
+          text,
+          start: match.index + from,
+          end: match.index + to,
+          sep: sepPart,
+          inParen: depth > 0,
+          paren: depth > 0 ? parenId : 0,
+        });
+      }
+    } else if (glued) {
       const split = glued[1].length;
       raw.push({
         text: glued[1],
@@ -391,18 +423,13 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
 
   const typeHits = new Map<string, ModelHit>();
   const nickMentions: NickMention[] = [];
-  const generic: GenericHit[] = [];
+  const generic: (GenericHit & { via?: NickMention })[] = [];
+  let pendingTyp = false;
   const brandHits = new Map<string, GenericHit>();
   const unresolved: UnresolvedToken[] = [];
 
   const brandsLabel = (ctx: Ctx | null) => (ctx ? [...ctx.brands].join('/') : '');
-  const typeModel = (text: string, brands: Set<string>): CanonicalModel | undefined => {
-    for (const brand of brands) {
-      const hit = index.typeByBrand.get(brand)?.get(text);
-      if (hit) return hit;
-    }
-    return undefined;
-  };
+  const typeModels = (text: string): CanonicalModel[] => index.typeToModels.get(text) ?? [];
   const isDisplacement = (text: string, brands: Set<string>): number | null => {
     if (text.startsWith('0')) return null;
     const value = Number(text);
@@ -412,11 +439,13 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
     return null;
   };
   const isValid = (text: string, brands: Set<string>) =>
-    typeModel(text, brands) !== undefined || isDisplacement(text, brands) !== null;
+    typeModels(text).length > 0 || isDisplacement(text, brands) !== null;
 
   let ctx: Ctx | null = null;
   const licensed = new Set<number>();
   let lastNick: NickMention | null = null;
+  /** poslední skupina čísel (kvůli "350 OHC", "175/356 Kývačka") */
+  let lastGroup: { endIdx: number; displacements: Set<number> } | null = null;
 
   for (let i = 0; i < tokens.length; i += 1) {
     const tok = tokens[i];
@@ -425,6 +454,7 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
     const chainable = ctx !== null && ALLOWED_BETWEEN_NUMBERS.test(tok.sep);
 
     if (tok.kind === 'BRAND') {
+      pendingTyp = false;
       const brand = tok.brand!;
       if (!brandHits.has(brand)) {
         brandHits.set(brand, { level: 'brand', brand, matchedText: textOf(tok.start, tok.end) });
@@ -444,6 +474,7 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
     }
 
     if (tok.kind === 'NICK') {
+      pendingTyp = false;
       const nickModels = index.aliasToModels.get(tok.key!)!;
       const brands = new Set(nickModels.map((m) => m.brand));
       if (ctx && chainable) {
@@ -477,6 +508,10 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
           mention.adjD.add(value);
         }
       }
+      // Skupina čísel hned před přezdívkou: objem v ní musí přezdívce sedět.
+      if (lastGroup && lastGroup.endIdx === i - 1 && /^\s+$/.test(tok.sep)) {
+        for (const d of lastGroup.displacements) mention.adjD.add(d);
+      }
       // Specifičtější alias hned za obecným ("Stadion S22") obecný potlačí.
       if (lastNick && /^\s+$/.test(tok.sep) && lastNick.end <= tok.start) {
         lastNick.nextNickKey = tok.key!;
@@ -495,7 +530,10 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
         unresolved.push({ kind: 'nickname', brand: brandsLabel(ctx), token: tok.text });
         continue;
       }
-      if (ctx && FILLERS.has(tok.text) && chainable) continue;
+      if (ctx && FILLERS.has(tok.text) && chainable) {
+        if (tok.text === 'typ' || tok.text === 'typy') pendingTyp = true;
+        continue;
+      }
       ctx = null;
       lastNick = null;
       continue;
@@ -508,11 +546,26 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
     const brands = ctx.brands;
     type Item = { idx: number; text: string; typ: boolean };
     const items: Item[] = [];
-    let sawTyp = false;
+    const letters: { letter: string; at: number }[] = [];
+    let sawTyp = pendingTyp;
+    pendingTyp = false;
     let j = i;
     let endTok = i;
     while (j < tokens.length) {
       const t = tokens[j];
+      if (
+        t.kind === 'WORD' &&
+        CZ_LETTER_RE.test(t.text) &&
+        brands.has('ČZ') &&
+        items.length > 0 &&
+        ALLOWED_BETWEEN_NUMBERS.test(t.sep) &&
+        !(t.text === 'a' && tokens[j + 1]?.kind === 'NUM') // "125 a 175" je spojka
+      ) {
+        letters.push({ letter: t.text.toUpperCase(), at: items.length });
+        endTok = j;
+        j += 1;
+        continue;
+      }
       if (t.kind === 'WORD' && FILLERS.has(t.text) && ALLOWED_BETWEEN_NUMBERS.test(t.sep)) {
         if (t.text === 'typ' || t.text === 'typy') sawTyp = true;
         j += 1;
@@ -544,8 +597,26 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
     const span = textOf(ctx.startOffset, tokens[endTok].end);
     const firstSepWhitespace = /^\s+$/.test(tokens[items[0].idx].sep);
     const resolvedAsType: boolean[] = [];
+    const groupDisplacements = new Set<number>();
+    // ČZ 125/150 A/B/T/C: písmena patří k objemům od posledního bloku písmen.
+    let pending: number[] = [];
+    let lettersSeen = false;
+    const flushLetters = (at: number) => {
+      for (const { letter, at: letterAt } of letters) {
+        if (letterAt !== at) continue;
+        lettersSeen = true;
+        for (const d of pending) {
+          const model = index.letterModels.get(`${d}|${letter}`);
+          if (model) {
+            typeHits.set(model.slug, { slug: model.slug, level: 'type', matchedText: span });
+            resolvedAsType.push(true);
+          }
+        }
+      }
+    };
 
     for (let k = 0; k < items.length; k += 1) {
+      flushLetters(k);
       const item = items[k];
       const tokenObj = tokens[item.idx];
       const prevItem = items[k - 1];
@@ -553,13 +624,13 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
       const isRangeEnd =
         prevItem !== undefined && /^\s*-\s*$/.test(tokenObj.sep) && item.idx === prevItem.idx + 1;
       if (isRangeEnd) {
-        const from = typeModel(prevItem.text, brands);
-        const to = typeModel(item.text, brands);
+        const from = typeModels(prevItem.text)[0];
+        const to = typeModels(item.text)[0];
         const lo = Number(prevItem.text);
         const hi = Number(item.text);
         if (from && to && from.family === to.family && lo < hi) {
           for (const model of models) {
-            if (model.family !== from.family || model.brand !== from.brand) continue;
+            if (model.family !== from.family) continue;
             for (const type of model.typeNumbers) {
               const value = Number(type);
               if (value > lo && value < hi) {
@@ -569,17 +640,37 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
           }
         }
       }
-      const model = typeModel(item.text, brands);
-      // Dvouciferné typy mimo řadu Jawa 50 (Pérák 11/12) jen s "typ" - jinak by
-      // "Pérák 11, 18" byly rozměry.
+      const hitModels = typeModels(item.text);
+      // Dvouciferné typy mimo řadu Jawa 50 (Pérák 11/12, Jawa 90) jen s "typ" -
+      // jinak by "Pérák 11, 18" byly rozměry.
       const weak =
-        model !== undefined && item.text.length <= 2 && model.family !== 'Jawa 50' && !item.typ;
+        hitModels.length > 0 &&
+        item.text.length <= 2 &&
+        hitModels.every((m) => m.family !== 'Jawa 50') &&
+        !item.typ;
       if (weak) {
         resolvedAsType.push(false);
         continue;
       }
-      if (model) {
-        typeHits.set(model.slug, { slug: model.slug, level: 'type', matchedText: span });
+      if (hitModels.length > 0) {
+        for (const model of hitModels) {
+          typeHits.set(model.slug, { slug: model.slug, level: 'type', matchedText: span });
+        }
+        const follow = tokens[item.idx + 1];
+        for (const combo of EXTRA_TYPE_COMBOS) {
+          if (
+            item.text === combo.first &&
+            follow?.kind === 'NUM' &&
+            follow.text === combo.second &&
+            follow.sep === '/'
+          ) {
+            for (const slug of combo.slugs) {
+              if (models.some((m) => m.slug === slug)) {
+                typeHits.set(slug, { slug, level: 'type', matchedText: span });
+              }
+            }
+          }
+        }
         resolvedAsType.push(true);
         continue;
       }
@@ -587,9 +678,21 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
       const displacement = isDisplacement(item.text, brands);
       if (displacement !== null) {
         ctx.scopeD.add(displacement);
+        groupDisplacements.add(displacement);
+        if (lettersSeen) {
+          pending = [];
+          lettersSeen = false;
+        }
+        pending.push(displacement);
         for (const brand of brands) {
           if (index.displacementsByBrand.get(brand)?.has(displacement)) {
-            generic.push({ level: 'displacement', brand, displacement, matchedText: span });
+            generic.push({
+              level: 'displacement',
+              brand,
+              displacement,
+              matchedText: span,
+              via: lastNick && ctx.lastKind === 'NICK' && firstSepWhitespace ? lastNick : undefined,
+            });
           }
         }
         if (lastNick && ctx.lastKind === 'NICK' && firstSepWhitespace)
@@ -600,6 +703,9 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
         unresolved.push({ kind: 'number', brand: brandsLabel(ctx), token: item.text });
       }
     }
+
+    flushLetters(items.length);
+    lastGroup = { endIdx: endTok, displacements: groupDisplacements };
 
     // "Pionýr 05, 20, 21" - čísla hned za přezdívkou ji upřesňují, přezdívka sama se neexpanduje.
     if (lastNick && ctx.lastKind === 'NICK' && firstSepWhitespace && resolvedAsType.some(Boolean)) {
@@ -618,11 +724,24 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
       const next = index.aliasToModels.get(mention.nextNickKey)!;
       if (all.length >= next.length && next.every((m) => all.includes(m))) continue;
     }
-    const wanted = mention.adjD.size > 0 ? mention.adjD : mention.scopeD;
+    // Čezeta + objem bez typu 501/502 je běžné ČZ, ne skútr - jen brand ČZ.
+    if (all.every((m) => m.family === 'Čezeta') && mention.adjD.size > 0) {
+      for (let g = generic.length - 1; g >= 0; g -= 1) {
+        if (generic[g].via === mention) generic.splice(g, 1);
+      }
+      if (!brandHits.has('ČZ')) {
+        brandHits.set('ČZ', { level: 'brand', brand: 'ČZ', matchedText: mention.text });
+      }
+      continue;
+    }
+    // Objem hned u přezdívky je závazný ("350 OHC" není 500 OHC); objem z okolí
+    // řady jen zužuje a když nesedí nikomu, platí přezdívka celá.
+    const strict = mention.adjD.size > 0;
+    const wanted = strict ? mention.adjD : mention.scopeD;
     let selected = all;
     if (wanted.size > 0) {
       const filtered = all.filter((m) => m.displacement === null || wanted.has(m.displacement));
-      if (filtered.length > 0) selected = filtered;
+      if (filtered.length > 0 || strict) selected = filtered;
     }
     for (const model of selected) {
       if (!nickHits.has(model.slug)) {
@@ -645,7 +764,13 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
     const key = `${hit.level}|${hit.brand}|${hit.displacement ?? ''}`;
     if (seenGeneric.has(key)) continue;
     seenGeneric.add(key);
-    genericHits.push(hit);
+    const { level: hitLevel, brand, displacement, matchedText } = hit;
+    genericHits.push({
+      level: hitLevel,
+      brand,
+      ...(displacement ? { displacement } : {}),
+      matchedText,
+    });
   }
 
   let level: MatchLevel | null = null;

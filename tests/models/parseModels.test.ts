@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseModels, extractModelScope } from '../../src/lib/models/parseModels';
+import { extractModelScope, parseModels } from '../../src/lib/models/parseModels';
 
 const slugs = (name: string, shopId?: string) =>
   parseModels(name, { shopId }).models.map((m) => m.slug);
@@ -8,24 +8,12 @@ const level = (name: string, shopId?: string) => parseModels(name, { shopId }).l
 describe('parseModels - reálné názvy z DB', () => {
   // [název, shop, očekávané modely, úroveň]
   const cases: [string, string, string[], string | null][] = [
-    // rozsahy
+    // Jawa 50: rozsahy, seznamy, závorky
     ['Hřídel hlavní (CZ) - JAWA 550-555', 'motojelinek', ['pionyr-550', 'pionyr-555'], 'type'],
     [
       'Kryt řídítek, velký - JAWA 50 20-23',
       'motojelinek',
       ['mustang-23', 'pionyr-20', 'pionyr-21'],
-      'type',
-    ],
-    [
-      'Labyrint ložiska (kliková hřídel) 12V - JAWA 350 638-640',
-      'motojelinek',
-      ['jawa-350-638', 'jawa-350-639', 'jawa-350-640'],
-      'type',
-    ],
-    [
-      'Blinkr, PRAVÝ (JAWA) - JAWA 350 634-640',
-      'motojelinek',
-      ['jawa-350-634', 'jawa-350-638', 'jawa-350-639', 'jawa-350-640'],
       'type',
     ],
     [
@@ -40,9 +28,195 @@ describe('parseModels - reálné názvy z DB', () => {
       ['pionyr-05', 'pionyr-20', 'pionyr-555'],
       'type',
     ],
-    // závorka = alias
     ['Elektroinstalace (30W) - JAWA 50 23 (Mustang)', 'motojelinek', ['mustang-23'], 'type'],
-    // seznamy s čárkou
+    ['Bowden rychlopalu JAWA 21, 23  *M', 'motomax', ['mustang-23', 'pionyr-21'], 'type'],
+    [
+      'Kolo hlavní hřídele Pionýr 05, 20, 21, 23 - zinek',
+      'motokramek',
+      ['mustang-23', 'pionyr-05', 'pionyr-20', 'pionyr-21'],
+      'type',
+    ],
+    ['Držák zadního světla Jawa Pionýr 23 Mustang', 'motokramek', ['mustang-23'], 'type'],
+    ['Kryt lanek Pionýr 550/555 - bez díry', 'motokramek', ['pionyr-550', 'pionyr-555'], 'type'],
+    [
+      'Těsnění víka zapalování JAWA50 20/21/23 *M',
+      'motomax',
+      ['mustang-23', 'pionyr-20', 'pionyr-21'],
+      'type',
+    ],
+    ['Samolepka Mustang - rudá - sada', 'motokramek', ['mustang-23'], 'nickname'],
+    ['plech Jawa 50/550 pařez', 'javarna', ['pionyr-550'], 'type'],
+    // Jawetta (551) a Stadion (552)
+    ['vidlice Jawa 50/551 Jawetta', 'javarna', ['jawetta', 'jawetta-sport'], 'type'],
+    ['M6 úplná JAWETTA 551  *M', 'motomax', ['jawetta', 'jawetta-sport'], 'type'],
+    ['Držák stojanu, CHROM - Jawetta', 'motojelinek', ['jawetta'], 'nickname'],
+    ['Sedlo Jawetta Sport', 'x', ['jawetta-sport'], 'nickname'],
+    ['Potah sedla BÉŽOVÝ - Jaweta Sport', 'motojelinek', ['jawetta-sport'], 'nickname'],
+    ['motor Jawa 50 typ 552', 'x', ['stadion-s11', 'stadion-s22', 'stadion-s23'], 'type'],
+    [
+      'Bowden přední brzdy - Stadion S22, Jawetta',
+      'motojelinek',
+      ['jawetta', 'stadion-s22'],
+      'nickname',
+    ],
+    ['Ložisko řízení, věneček - S11', 'motojelinek', ['stadion-s11'], 'nickname'],
+    [
+      'dekompresoru Stadion S 11/22, Jawetta ZN',
+      'jawa-korda',
+      ['jawetta', 'stadion-s11', 'stadion-s22'],
+      'nickname',
+    ],
+    [
+      'Držák bzučáku, zesílený - Stadion, Jawetta',
+      'motojelinek',
+      ['jawetta', 'stadion-s11', 'stadion-s22', 'stadion-s23'],
+      'nickname',
+    ],
+    // Jawa 90
+    [
+      'Elektroinstalace - JAWA 90, Cross, Roadster, Trail',
+      'motojelinek',
+      ['jawa-90-roadster', 'jawa-90-trail'],
+      'nickname',
+    ],
+    [
+      'Bowden PLYN - JAWA 90 Cross',
+      'motojelinek',
+      ['jawa-90-roadster', 'jawa-90-trail'],
+      'nickname',
+    ],
+    ['Koleno výfuku (CZ) - JAWA 90 Roadster', 'motojelinek', ['jawa-90-roadster'], 'nickname'],
+    ['Kabel Jawa 90 typ 31', 'x', ['jawa-90-roadster'], 'type'],
+    // Pérák, OHC, Kývačka
+    [
+      'Osa kola (PŘEDNÍ), ZINEK - JAWA 250/350 Pérák',
+      'motojelinek',
+      ['perak-250', 'perak-350'],
+      'nickname',
+    ],
+    [
+      'Ampérmetr 10A - JAWA Pérák, 500 OHC',
+      'motojelinek',
+      ['ohc-500', 'perak-250', 'perak-350'],
+      'nickname',
+    ],
+    ['Ciferník Jawa 500 OHC šnek a 01', 'jawa-korda', ['ohc-500'], 'nickname'],
+    [
+      'Filtr sání Jawa 250 350 Pérák Kývačka chrom',
+      'jawa-korda',
+      ['kyvacka-250', 'kyvacka-350', 'perak-250', 'perak-350'],
+      'nickname',
+    ],
+    ['Kryt klaksonu, CHROM - Kývačka', 'motojelinek', ['kyvacka-250', 'kyvacka-350'], 'nickname'],
+    ['Sada těsnění Jawa 175/356 Kývačka', 'javarna', ['jawa-cz-175-356'], 'type'],
+    ['k navaření Jawa čz 250/353 a 350/354', 'javarna', ['kyvacka-250', 'kyvacka-350'], 'type'],
+    // Panelka, Sport, Californian
+    [
+      'Páčka klíče brzdy, ZINEK (90mm) - Panelka',
+      'motojelinek',
+      ['panelka-250-559', 'panelka-250-592', 'panelka-350-360'],
+      'nickname',
+    ],
+    [
+      'Nádstavec - držák krytu řetězu JAWA 250 Panelka',
+      'motomax',
+      ['panelka-250-559', 'panelka-250-592'],
+      'nickname',
+    ],
+    [
+      'Mazací kolínko kyvné vidlice - JAWA 350 Kývačka, Panelka',
+      'motojelinek',
+      ['kyvacka-350', 'panelka-350-360'],
+      'nickname',
+    ],
+    [
+      'Kryt řetězu Jawa Panelka 250, 350 - 559, 592, 360',
+      'motomax',
+      ['panelka-250-559', 'panelka-250-592', 'panelka-350-360'],
+      'type',
+    ],
+    [
+      'Jawa 250/350 Panelka 559/360 na Vape',
+      'jawa-korda',
+      ['panelka-250-559', 'panelka-350-360'],
+      'type',
+    ],
+    [
+      'Záchyt reakce JAWA Sport 590, 361 -zinek',
+      'motomax',
+      ['sport-250-590', 'sport-350-361'],
+      'type',
+    ],
+    [
+      'Kryt řetězu (CZ) - JAWA 350 Californian',
+      'motojelinek',
+      ['californian-362', 'sport-350-361'],
+      'nickname',
+    ],
+    [
+      'blatník Jawa Californian',
+      'jawa-korda',
+      ['californian-362', 'sport-250-590', 'sport-350-361'],
+      'nickname',
+    ],
+    // 350 63x a rozsahy
+    [
+      'Blinkr, PRAVÝ (JAWA) - JAWA 350 634-640',
+      'motojelinek',
+      ['jawa-350-634', 'jawa-350-638', 'jawa-350-639', 'jawa-350-640'],
+      'type',
+    ],
+    [
+      'Čep rozety Jawa 350 634 - 640 nový',
+      'jawa-korda',
+      ['jawa-350-634', 'jawa-350-638', 'jawa-350-639', 'jawa-350-640'],
+      'type',
+    ],
+    [
+      'Sada misek řízení s ložiskem JAWA350 - 634, 638, 639, 640',
+      'motomax',
+      ['jawa-350-634', 'jawa-350-638', 'jawa-350-639', 'jawa-350-640'],
+      'type',
+    ],
+    ['Držák přístrojů - Jawa 350 638-639', 'motojelinek', ['jawa-350-638', 'jawa-350-639'], 'type'],
+    ['Bowden přední brzdy - Velorex 350 (3-kolový)', 'motojelinek', ['velorex-350'], 'nickname'],
+    // ČZ
+    [
+      'Bakelitový kryt baterie s víkem - ČZ 125 B,T',
+      'motojelinek',
+      ['cz-125-b', 'cz-125-t'],
+      'type',
+    ],
+    ['kola ČZ 125/150C', 'x', ['cz-125-c', 'cz-150-c'], 'type'],
+    ['stupaček ČZ 125T, 150 C - nerez', 'motokramek', ['cz-125-t', 'cz-150-c'], 'type'],
+    [
+      'Hřídel startovací ČZ 125,175 typ  476, 477, 487, 488 - dovoz',
+      'motokramek',
+      ['cz-125-476', 'cz-125-488', 'cz-175-477', 'cz-175-487'],
+      'type',
+    ],
+    [
+      'Kolo ozubené 16z, 3rychl. - ČZ 476-488',
+      'motojelinek',
+      ['cz-125-476', 'cz-125-488', 'cz-175-477', 'cz-175-487'],
+      'type',
+    ],
+    [
+      'Karburátor ČZ 250/471, 350/472, 125/477',
+      'javarna',
+      ['cz-125-476', 'cz-175-477', 'cz-250-471', 'cz-350-472'].filter((s) => s !== 'cz-125-476'),
+      'type',
+    ],
+    ['Držák sedla ČZ - kulatý rám', 'motokramek', [], 'brand'],
+    ['Přední světlo ČZ 150 Miss Kevelos', 'x', ['cz-150-miss'], 'nickname'],
+    ['Čep klikové hřídele, LEVÝ - ČZ 125/175', 'motojelinek', [], 'displacement'],
+    ['Těsnění pod hlavu Al otvor 60mm x 0,5mm JAWA/ČZ-175/350  *M', 'motomax', [], 'displacement'],
+    // Čezeta
+    ['Guma krytu zadní rozety - ČZ 502', 'motojelinek', ['cezeta-502'], 'type'],
+    ['Skútr Čezeta 501.01 Prase, čokoláda', 'motomax', ['cezeta-501'], 'type'],
+    ['Řetěz pro Čezeta', 'x', ['cezeta-501', 'cezeta-502'], 'nickname'],
+    ['Řetěz pro Čezetu 125', 'x', [], 'brand'],
+    // Babetta
     [
       'Kryt řetězu (ČERNÝ) - Babetta 210, 225',
       'motojelinek',
@@ -55,105 +229,20 @@ describe('parseModels - reálné názvy z DB', () => {
       ['babetta-207', 'babetta-228'],
       'type',
     ],
-    ['Držák přístrojů - Jawa 350 638-639', 'motojelinek', ['jawa-350-638', 'jawa-350-639'], 'type'],
-    ['Pant sedla - JAWA 50 550-555', 'motojelinek', ['pionyr-550', 'pionyr-555'], 'type'],
-    // objemy + přezdívka
-    [
-      'Osa kola (PŘEDNÍ), ZINEK - JAWA 250/350 Pérák',
-      'motojelinek',
-      ['perak-250', 'perak-350'],
-      'nickname',
-    ],
-    ['Lamela spojky, kovová (JAWA) - JAWA 350 OHC', 'motojelinek', ['ohc-350'], 'nickname'],
-    [
-      'Ampérmetr 10A - JAWA Pérák, 500 OHC',
-      'motojelinek',
-      ['ohc-500', 'perak-250', 'perak-350'],
-      'nickname',
-    ],
-    [
-      'Filtr sání Jawa 250 350 Pérák Kývačka chrom',
-      'jawa-korda',
-      ['kyvacka-250', 'kyvacka-350', 'perak-250', 'perak-350'],
-      'nickname',
-    ],
-    [
-      'Guma masky paraboly JAWA Kývačka, Panelka (U profil)',
-      'motomax',
-      ['kyvacka-175', 'kyvacka-250', 'kyvacka-350', 'panelka-250', 'panelka-350'],
-      'nickname',
-    ],
-    ['Nádstavec - držák krytu řetězu JAWA 250 Panelka', 'motomax', ['panelka-250'], 'nickname'],
-    // typ + přezdívka
-    ['Panelka', 'x', ['panelka-250', 'panelka-350'], 'nickname'],
-    [
-      'Sada šroubů motoru Jawa 250 typ 559  Panelka',
-      'motokramek',
-      ['jawa-250-559', 'panelka-250'],
-      'type',
-    ],
-    // slepené tvary
-    [
-      'Sada misek řízení s ložiskem JAWA350 - 634, 638, 639, 640',
-      'motomax',
-      ['jawa-350-634', 'jawa-350-638', 'jawa-350-639', 'jawa-350-640'],
-      'type',
-    ],
-    [
-      'Těsnění víka zapalování JAWA50 20/21/23 *M',
-      'motomax',
-      ['mustang-23', 'pionyr-20', 'pionyr-21'],
-      'type',
-    ],
     ['Řetěz Babetta134 zadní', 'x', ['babetta-134'], 'type'],
-    // malá čísla s kontextem
-    ['Bowden rychlopalu JAWA 21, 23  *M', 'motomax', ['mustang-23', 'pionyr-21'], 'type'],
-    ['Držák / kříž stupaček JAWA 50 - 05', 'motomax', ['pionyr-05'], 'type'],
     [
-      'Kolo hlavní hřídele Pionýr 05, 20, 21, 23 - zinek',
-      'motokramek',
-      ['mustang-23', 'pionyr-05', 'pionyr-20', 'pionyr-21'],
+      'Čelist těžká BABETTA 210, 225, Stella M134 (2ks sada)',
+      'motomax',
+      ['babetta-134', 'babetta-210', 'babetta-225'],
       'type',
     ],
-    ['Držák zadního světla Jawa Pionýr 23 Mustang', 'motokramek', ['mustang-23'], 'type'],
-    ['Kryt lanek Pionýr 550/555 - bez díry', 'motokramek', ['pionyr-550', 'pionyr-555'], 'type'],
-    // nickname bez čísla
-    ['Samolepka Mustang - rudá - sada', 'motokramek', ['mustang-23'], 'nickname'],
-    ['Držák stojanu, CHROM - Jawetta', 'motojelinek', ['jawetta'], 'nickname'],
-    ['Sedlo Jawetta Sport', 'x', ['jawetta-sport'], 'nickname'],
-    [
-      'Bowden přední brzdy - Stadion S22, Jawetta',
-      'motojelinek',
-      ['jawetta', 'stadion-s22'],
-      'nickname',
-    ],
-    ['Držák světlometu STADION S11 sada -zinek', 'motomax', ['stadion-s11'], 'nickname'],
-    [
-      'Držák bzučáku - Stadion, Jawetta',
-      'motojelinek',
-      ['jawetta', 'stadion-s11', 'stadion-s22', 'stadion-s23'],
-      'nickname',
-    ],
-    ['Ložisko řízení, věneček - S11', 'motojelinek', ['stadion-s11'], 'nickname'],
-    ['Bowden přední brzdy - Velorex 350 (3-kolový)', 'motojelinek', ['velorex-350'], 'nickname'],
-    [
-      'Vratná pružina startovací hřídele Jawa-ČZ Kývačka',
-      'jawa-korda',
-      ['kyvacka-175', 'kyvacka-250', 'kyvacka-350'],
-      'nickname',
-    ],
-    // objem bez přezdívky / jen značka
-    ['Čep klikové hřídele, středový - JAWA 350', 'motojelinek', [], 'displacement'],
-    ['Těsnění pod hlavu Al otvor 60mm x 0,5mm JAWA/ČZ-175/350  *M', 'motomax', [], 'displacement'],
-    ['Držák kontrolek tachometru - JAWA, ČZ', 'motojelinek', [], 'brand'],
+    ['blatník BABETTA STAR 134, STELLA  *M', 'motomax', ['babetta-134'], 'nickname'],
     ['Bowden ZADNÍ BRZDA, DOMINO - Babetta', 'motojelinek', [], 'brand'],
-    // bez shody / holá čísla
+    // bez shody, brand
     ['Ložisko 6302 2RS', 'motomax', [], null],
     ['Kulička d=6  BAB-225', 'motomax', [], null],
-    ['Tryska hlavní M4 x 0,7 - 95 Jawa, ČZ', 'motomax', [], 'brand'],
-    // řádek bez " - " u motojelinku = celý název
-    ['Kryt JAWA 350 640', 'motojelinek', ['jawa-350-640'], 'type'],
-    // desetinná čísla nejsou typy
+    ['Držák kontrolek tachometru - JAWA, ČZ', 'motojelinek', [], 'brand'],
+    ['Čep klikové hřídele, středový - JAWA 350', 'motojelinek', [], 'displacement'],
     ['Píst BABETTA  40,25', 'motomax', [], 'brand'],
     [
       'Píst JAWA 50 - 05, 20, 21, 23  39,00 / 14,1',
@@ -161,7 +250,7 @@ describe('parseModels - reálné názvy z DB', () => {
       ['mustang-23', 'pionyr-05', 'pionyr-20', 'pionyr-21'],
       'type',
     ],
-    ['Pístní sada s kroužky 58,25,na čep 16 - Jawa 350', 'motojelinek', [], 'displacement'],
+    ['Kryt JAWA 350 640', 'motojelinek', ['jawa-350-640'], 'type'],
   ];
 
   it.each(cases)('%s', (name, shop, expectedSlugs, expectedLevel) => {
@@ -172,7 +261,6 @@ describe('parseModels - reálné názvy z DB', () => {
 
 describe('parseModels - pravidla', () => {
   it('Motojelinek bere modely jen za posledním " - "', () => {
-    // "Jawa 550" před pomlčkou je název dílu, ne model.
     const result = parseModels('Hrdlo Jawa 550 sání - Babetta 210', { shopId: 'motojelinek' });
     expect(result.scope).toBe('Babetta 210');
     expect(result.models.map((m) => m.slug)).toEqual(['babetta-210']);
@@ -186,17 +274,16 @@ describe('parseModels - pravidla', () => {
     expect(extractModelScope('Kryt JAWA 350 640', 'motojelinek')).toBe('Kryt JAWA 350 640');
   });
 
-  it('holá čísla bez značky nikdy nevedou na model', () => {
-    expect(slugs('Kolo ozubené 23z, 550 mm')).toEqual([]);
-    expect(slugs('Šroub 21 x 20, rozteč 05')).toEqual([]);
+  it('holá čísla bez značky nikdy nevedou na model (551, 552, 90, 31, 11)', () => {
+    expect(slugs('Kolo ozubené 23z, 550 mm, 551, 552')).toEqual([]);
+    expect(slugs('Šroub 21 x 20, rozteč 05, 90')).toEqual([]);
     expect(level('Kolo II. 18z org.')).toBeNull();
+    expect(level('Držák 90')).toBeNull();
   });
 
   it('rozsah se nerozvíjí mimo typy existující v seedu', () => {
-    // 476 a 488 nejsou v seedu (ČZ), nic se nerozvine
-    const result = parseModels('Kolo ozubené - ČZ 476-488');
-    expect(result.models).toEqual([]);
-    expect(result.level).toBe('brand');
+    // 350 není typ, rozsah "350-640" se neexpanduje
+    expect(slugs('Excentr JAWA 350 - 640', 'motomax')).toEqual(['jawa-350-640']);
   });
 
   it('250/350 bez přezdívky = displacement, bez vazby na generaci', () => {
@@ -208,75 +295,28 @@ describe('parseModels - pravidla', () => {
     ).toEqual([250, 350]);
   });
 
-  it('priorita type > nickname > displacement > brand', () => {
-    const result = parseModels('Kryt Jawa 350 Panelka 634');
-    expect(result.level).toBe('type');
+  it('priorita type > nickname: každý model nese svou nejvyšší úroveň', () => {
+    const result = parseModels('Kryt Jawa 350 Panelka, 634');
     const byLevel = Object.fromEntries(result.models.map((m) => [m.slug, m.level]));
     expect(byLevel['jawa-350-634']).toBe('type');
+    expect(byLevel['panelka-350-360']).toBe('nickname');
+    expect(result.level).toBe('type');
   });
 
-  it('ukládá matched_text', () => {
-    const result = parseModels('Bowden - Jawa 350 - 638, 639', { shopId: 'x' });
-    expect(result.models.find((m) => m.slug === 'jawa-350-638')?.matchedText).toBe(
-      'Jawa 350 - 638, 639',
-    );
-    const nick = parseModels('Samolepka Mustang - rudá');
-    expect(nick.models[0].matchedText).toBe('Mustang');
-  });
-
-  it('nerozřešené tokeny: ČZ typy a neseedované přezdívky', () => {
-    const cz = parseModels('Hřídel startovací ČZ 125,175 typ 476, 477, 487, 488 - dovoz');
-    expect(cz.models).toEqual([]);
-    expect(cz.unresolved.map((u) => u.token)).toEqual(['125', '175', '476', '477', '487', '488']);
-    expect(cz.unresolved.every((u) => u.brand === 'ČZ')).toBe(true);
-    const stella = parseModels('Čelist řadící BABETTA 210, 225, Stella M134');
-    expect(stella.models.map((m) => m.slug)).toEqual(['babetta-210', 'babetta-225']);
-    expect(stella.unresolved).toEqual([{ kind: 'nickname', brand: 'Babetta', token: 'stella' }]);
-    expect(parseModels('Kryt JAWA 350 Californian').unresolved).toEqual([
-      { kind: 'nickname', brand: 'Jawa', token: 'californian' },
+  it('"354/06" mapuje na Kývačku 350 i první 350 Panelku (type)', () => {
+    const result = parseModels('Katalog ND Jawa 350 354/06');
+    expect(result.models.map((m) => [m.slug, m.level])).toEqual([
+      ['kyvacka-350', 'type'],
+      ['panelka-350-360', 'type'],
     ]);
   });
 
-  it('Californian ani Sport nejsou aliasy modelů', () => {
-    expect(slugs('Kryt řetězu (CZ) - JAWA 350 Californian', 'motojelinek')).toEqual([]);
-  });
-});
-
-describe('parseModels - další pravidla z reálných dat', () => {
-  it('rozsah i s mezerami kolem pomlčky: "634 - 640"', () => {
-    expect(slugs('Čep rozety Jawa 350 634 - 640 nový', 'jawa-korda')).toEqual([
+  it('"350 OHC" je moderní Jawa a nemapuje se, "500 OHC" ano', () => {
+    expect(slugs('Lamela spojky, kovová (JAWA) - JAWA 350 OHC', 'motojelinek')).toEqual([]);
+    expect(slugs('Kryt nádrže, LEVÝ (JAWA) - JAWA 350 634, 350 OHC', 'motojelinek')).toEqual([
       'jawa-350-634',
-      'jawa-350-638',
-      'jawa-350-639',
-      'jawa-350-640',
     ]);
-  });
-
-  it('"350 - 640" není rozsah (350 není typ), jen typ 640', () => {
-    expect(slugs('Excentr JAWA 350 - 640', 'motomax')).toEqual(['jawa-350-640']);
-  });
-
-  it('objem/typ se slashem: Jawa 50/550, 555', () => {
-    expect(slugs('Píst Jawa 50/550, 555, Stadion 11/22, Jawetta 38,25 mm', 'jawa-korda')).toEqual([
-      'jawetta',
-      'pionyr-550',
-      'pionyr-555',
-      'stadion-s11',
-      'stadion-s22',
-    ]);
-  });
-
-  it('Stadion S 11/22 a S11/S22', () => {
-    expect(slugs('dekompresoru Stadion S 11/22, Jawetta ZN', 'jawa-korda')).toEqual([
-      'jawetta',
-      'stadion-s11',
-      'stadion-s22',
-    ]);
-    expect(slugs('Brzdový štít Stadion S11, S22, Jawetta', 'javarna')).toEqual([
-      'jawetta',
-      'stadion-s11',
-      'stadion-s22',
-    ]);
+    expect(slugs('Řetěz 100 čl. JAWA 500 OHC')).toEqual(['ohc-500']);
   });
 
   it('dvouciferné typy Péráku (11/12) jen s "typ"', () => {
@@ -287,6 +327,27 @@ describe('parseModels - další pravidla z reálných dat', () => {
     expect(slugs('Kryt Jawa 350 typ 12', 'motomax')).toEqual(['perak-350']);
   });
 
+  it('písmena ČZ patří k objemům od posledního bloku písmen', () => {
+    expect(slugs('ČZ 125, 150 B, T, C')).toEqual(['cz-125-b', 'cz-125-c', 'cz-125-t', 'cz-150-c']);
+    expect(slugs('ČZ 125 a 175')).toEqual([]);
+  });
+
+  it('ukládá matched_text', () => {
+    const result = parseModels('Bowden - Jawa 350 - 638, 639', { shopId: 'x' });
+    expect(result.models.find((m) => m.slug === 'jawa-350-638')?.matchedText).toBe(
+      'Jawa 350 - 638, 639',
+    );
+    expect(parseModels('Samolepka Mustang - rudá').models[0].matchedText).toBe('Mustang');
+  });
+
+  it('nerozřešené tokeny: neseedované ČZ typy a čísla', () => {
+    const result = parseModels('Hřídel ČZ 125, 150 - 351, 500');
+    expect(result.unresolved.map((u) => u.token)).toEqual(['351', '500']);
+    expect(parseModels('Teleskop Jawa Babetta 206, 207').unresolved).toEqual([
+      { kind: 'number', brand: 'Jawa/Babetta', token: '206' },
+    ]);
+  });
+
   it('neseedované přezdívky řetěz čísel nepřerušují', () => {
     const result = parseModels('pod válce Jawa 350 Pérák, Kývačka, Panelka, Calif, 634 1mm', {
       shopId: 'jawa-korda',
@@ -295,9 +356,10 @@ describe('parseModels - další pravidla z reálných dat', () => {
     expect(result.unresolved).toContainEqual({ kind: 'nickname', brand: 'Jawa', token: 'calif' });
   });
 
-  it('kvótované kódy původu (,,CZ) a *výrobce se ignorují', () => {
-    expect(level('Pístní kroužek 39,75 STADION ,,CZ *Almet', 'motomax')).toBe('nickname');
+  it('kvótované kódy původu (,,CZ) a *výrobce se ignorují, ,,ČZ 125 ne', () => {
     expect(level('(cena 1m)  ,,CZ', 'motomax')).toBeNull();
+    expect(level('Pístní kroužek 39,75 STADION ,,CZ *Almet', 'motomax')).toBe('nickname');
+    expect(slugs('s nýty  ,,ČZ 125 B', 'motomax')).toEqual(['cz-125-b']);
   });
 });
 

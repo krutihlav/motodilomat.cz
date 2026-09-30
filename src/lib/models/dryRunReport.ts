@@ -20,6 +20,16 @@ export type DryRunReport = {
   unresolved: { brand: string; kind: string; token: string; count: number }[];
   tooManyModels: RowResult[];
   conflicts: RowResult[];
+  extras: {
+    /** nezařazený token "206": počet řádků a až 10 různých názvů */
+    token206: { rows: number; names: string[] };
+    /** díly mapované zároveň na Jawettu a Stadion */
+    jawettaAndStadion: number;
+    /** díly s vazbou na víc objemů ČZ */
+    multipleCzDisplacements: number;
+    /** řádky s "350 OHC" (moderní Jawa, flag modern_jawa) */
+    modernOhc: number;
+  };
 };
 
 const emptyLevels = (): Record<LevelKey, number> => ({
@@ -106,6 +116,33 @@ export function buildReport(
   const unmatched = results.filter((r) => r.parse.level === null);
   const noCueTotal = Object.values(options.noCueByShop ?? {}).reduce((a, b) => a + b, 0);
 
+  const bySlug = new Map(models.map((m) => [m.slug, m]));
+  const extras: DryRunReport['extras'] = {
+    token206: { rows: 0, names: [] },
+    jawettaAndStadion: 0,
+    multipleCzDisplacements: 0,
+    modernOhc: 0,
+  };
+  for (const result of results) {
+    const slugs = result.parse.models.map((m) => m.slug);
+    if (result.parse.unresolved.some((u) => u.token === '206')) {
+      extras.token206.rows += result.count;
+      if (extras.token206.names.length < 10)
+        extras.token206.names.push(`[${result.shopId}] ${result.name}`);
+    }
+    if (slugs.some((s) => s.startsWith('jawetta')) && slugs.some((s) => s.startsWith('stadion'))) {
+      extras.jawettaAndStadion += result.count;
+    }
+    const czDisplacements = new Set(
+      slugs
+        .map((s) => bySlug.get(s))
+        .filter((m) => m && (m.brand === 'ČZ' || m.family === 'Jawa-ČZ') && m.family !== 'Čezeta')
+        .map((m) => m!.displacement),
+    );
+    if (czDisplacements.size > 1) extras.multipleCzDisplacements += result.count;
+    if (/\b350\s*ohc\b/i.test(result.name)) extras.modernOhc += result.count;
+  }
+
   return {
     totalRows,
     byShop,
@@ -119,6 +156,7 @@ export function buildReport(
       (a, b) => b.count - a.count || a.token.localeCompare(b.token),
     ),
     tooManyModels: results.filter((r) => r.parse.models.length > SUSPICIOUS_MODEL_LIMIT),
+    extras,
     conflicts: results.filter(
       (r) =>
         findConflict(
@@ -196,6 +234,15 @@ export function renderReport(
     );
     out.push(`- ${describe(r)} [${families?.join(' + ')}]`);
   }
+  out.push('');
+
+  const { extras } = report;
+  out.push('## Doplňující čísla', '');
+  out.push(`- Díly mapované zároveň na Jawettu a Stadion: **${extras.jawettaAndStadion}** řádků`);
+  out.push(`- Díly s vazbou na víc objemů ČZ: **${extras.multipleCzDisplacements}** řádků`);
+  out.push(`- Řádky s „350 OHC“ (moderní Jawa, flag modern_jawa): **${extras.modernOhc}**`);
+  out.push(`- Token „206“ (nezařazený): **${extras.token206.rows}** řádků, příklady názvů:`, '');
+  for (const name of extras.token206.names) out.push(`  - ${name}`);
   out.push('');
   return out.join('\n');
 }

@@ -82,12 +82,14 @@ describe('assessItem - moderní Jawa', () => {
     'Kryt Jawa 300 CL',
     'Jawa Forty Two blatník',
     'Sedlo Jawa forty two 42',
+    'Lamela spojky, kovová (JAWA) - JAWA 350 OHC',
   ])('flags "%s" but keeps it', (productName) => {
     expect(assessItem(item({ productName }))).toEqual({ exclusion: null, flags: ['modern_jawa'] });
   });
 
   it('does not flag classic Jawa models', () => {
     expect(assessItem(item({ productName: 'Píst Jawa 350 typ 634' })).flags).toEqual([]);
+    expect(assessItem(item({ productName: 'Ciferník Jawa 500 OHC šnek' })).flags).toEqual([]);
   });
 
   it('combines price_review and modern_jawa', () => {

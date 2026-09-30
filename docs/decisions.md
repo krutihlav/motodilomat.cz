@@ -142,17 +142,22 @@ generuje `npx tsx scripts/generate-models-seed.ts`, test hlídá shodu) a parser
 Migrace 012/013 zatím **nejsou aplikované** na DB (ověřeno v transakci s
 rollbackem).
 
-**Seed:** 33 modelů. Typová čísla „ověřit“ nejsou v `type_numbers`, jen v `note`;
-ČZ (355, 450, 453, 455, 470–472, 476, 477, 487, 488) se neseedují, Simson je mimo
-rozsah. Kývačku 175 (typ 356) jsem označil stejnými aliasy jako 250/350 a alias
-`jawa 90` dostal model `jawa-90` (jinak na něj displacement level nevede) –
-obojí k potvrzení.
+**Seed (finální, 57 modelů):** ověřená typová čísla (Wikipedie, veteranportal,
+jawa-50.cz, cezetmania), `needs_verification=false` u všech. Typ může sdílet víc
+modelů (551 = obě Jawetty, 552 = tři Stadiony), ČZ 125/150 A/B/T/C mají typ
+označený písmenem (`typeNumbers=['B']`), Jawa 90 je Trail (30, 36) a Roadster
+(31, 37), Panelka má tři modely (559, 592, 360) a „354/06“ vede na
+`kyvacka-350` i `panelka-350-360`. Bez seedu zůstávají Simson, předválečné ČZ,
+ČZ 500, motokros 968/980 a „350 OHC“ (moderní Jawa, přidáno do flagu
+`modern_jawa` v `itemQuality.ts`; už uložené řádky se nepřeflagují).
+Čezeta + objem bez typu 501/502 = jen brand ČZ, ne skútr.
 
 **Parser:** čísla typů/objemů se berou jen hned za značkou/přezdívkou (včetně
 slepených `jawa350`, `babetta134`); rozsahy (`550-555`, `20-23`, `634 - 640`)
 se rozvíjejí jen přes typy existující v seedu ve stejné řadě; dvouciferné typy
 mimo Jawa 50 (Pérák 11/12) jen s „typ“; desetinná čísla (`58,25`) nejsou typy;
-priorita `type > nickname > displacement > brand`, `displacement`/`brand` **nemají
+holé „551/552/90/11“ bez značky se ignorují; objem těsně před přezdívkou
+je závazný („350 OHC“ není ohc-500); priorita `type > nickname > displacement > brand`, `displacement`/`brand` **nemají
 vazbu na konkrétní model** (parser vrací jen `generic` zásahy). Motojelinek čte
 modely za posledním `" - "`.
 

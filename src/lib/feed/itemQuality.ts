@@ -35,8 +35,15 @@ const EXCLUDED_TOP_CATEGORIES = ['modely motocyklu, automobilu'];
 // "motocykl\b" (ne "motocyklový ...") a "motor bez/kompletní ..." - celé stroje a motory.
 const VEHICLE_NAME_RE = /^(motocykl\b|motor (bez|kompletni)\b)/;
 
-// Moderní Jawa (CL 42, 300 CL, RVM, Adventure) - flagovat, nevyřazovat.
-const MODERN_JAWA_RES = [/\bcl 42\b/, /\bforty ?two\b/, /\brvm\b/, /\badventure\b/, /\b300 cl\b/];
+// Moderní Jawa (CL 42, 300 CL, RVM, Adventure, 350 OHC) - flagovat, nevyřazovat.
+const MODERN_JAWA_RES = [
+  /\bcl 42\b/,
+  /\bforty ?two\b/,
+  /\brvm\b/,
+  /\badventure\b/,
+  /\b300 cl\b/,
+  /\b350 ?ohc\b/, // moderní Jawa 350 OHC (od 2017); historická je Jawa 500 OHC
+];
 
 function topCategory(categoryText: string | undefined): string | null {
   const first = categoryText?.split('>')[0]?.trim();
