@@ -1,3 +1,5 @@
+import { isBrandLikeName } from './brandName';
+
 export type MicrodataProduct = {
   name?: string;
   priceVat?: number;
@@ -209,14 +211,10 @@ function normalizeForCompare(value: string): string {
     .trim();
 }
 
-/** Značky, které e-shopy omylem dávají do názvu produktu (motojelinek.cz: "CZ", "JAWA Moto spol s r. o."). */
-const BRAND_ONLY_NAMES = new Set(['cz', 'jawa', 'twn', 'jawa moto spol s r o']);
-
 function isBrandOnlyName(name: string, brandName: string | undefined): boolean {
-  const normalized = normalizeForCompare(name);
   return (
-    BRAND_ONLY_NAMES.has(normalized) ||
-    (brandName !== undefined && normalized === normalizeForCompare(brandName))
+    isBrandLikeName(name) ||
+    (brandName !== undefined && normalizeForCompare(name) === normalizeForCompare(brandName))
   );
 }
 

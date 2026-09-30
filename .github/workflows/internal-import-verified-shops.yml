@@ -13,6 +13,11 @@ on:
         # workflow_dispatch nemá typ "number" (jen string/choice/boolean/environment) -
         # validace čísla se dělá až v scripts/import-feed.ts.
         type: string
+      refresh_known_urls:
+        description: 'Jednorázový refresh: místo sitemapy projde URL existujících řádků shop_products (--refresh-known-urls). Vyplň shop_id.'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   import-verified-shops:
@@ -24,6 +29,7 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       SHOP_ID: ${{ inputs.shop_id }}
       MAX_REQUESTS: ${{ inputs.max_requests }}
+      REFRESH_KNOWN_URLS: ${{ inputs.refresh_known_urls }}
     steps:
       - uses: actions/checkout@v4
 
@@ -38,9 +44,13 @@ jobs:
         run: |
           set -e
           SHOPS="${SHOP_ID:-motokramek jawa-korda motojelinek}"
+          REFRESH_FLAG=""
+          if [ "$REFRESH_KNOWN_URLS" = "true" ]; then
+            REFRESH_FLAG="--refresh-known-urls"
+          fi
           for shop in $SHOPS; do
             echo "::group::Import: $shop"
-            npx tsx scripts/import-feed.ts "$shop" --internal --max-requests="${MAX_REQUESTS:-300}"
+            npx tsx scripts/import-feed.ts "$shop" --internal --max-requests="${MAX_REQUESTS:-300}" $REFRESH_FLAG
             echo "::endgroup::"
           done
 

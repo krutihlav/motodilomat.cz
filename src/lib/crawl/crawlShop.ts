@@ -21,7 +21,7 @@ import { shuffle } from '../util/shuffle';
  */
 export const DEFAULT_MAX_REQUESTS_PER_SHOP = 300;
 
-function toFeedItem(product: CrawledProduct): FeedItem {
+export function toFeedItem(product: CrawledProduct): FeedItem {
   return {
     itemId: product.url,
     productName: product.name,
@@ -42,7 +42,7 @@ function toFeedItem(product: CrawledProduct): FeedItem {
  * ceny vrací null - u name žádnou takovou záruku nedává. Vrací null, pokud
  * chybí buď jedno, stejně jako mapProductNode() u JSON-LD.
  */
-function microdataToCrawledProduct(
+export function microdataToCrawledProduct(
   product: MicrodataProduct,
   pageUrl: string,
 ): CrawledProduct | null {

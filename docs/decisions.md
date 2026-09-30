@@ -101,3 +101,26 @@ CL 42 / forty two / RVM / adventure / 300 CL). Ceny 1-9 Kč jsou legitimní
 `markStaleOutOfStock` (jen varování). `javarna` už není ve výchozím seznamu
 `internal-import-verified-shops.yml`. Plánovaný `--internal` crawl se
 nenasazuje, internal import zůstává jen ruční (`workflow_dispatch`).
+
+## 2026-09-30 – Refresh known URLs, ignored řádky, MPN motojelinku = kódy MVdily
+
+**Režim `--refresh-known-urls`** (`scripts/import-feed.ts`, workflow input
+`refresh_known_urls`): jednorázově projde URL existujících řádků shopu ze
+`shop_products` (ne sitemapu), se stejným rate limitem 1 req/3 s, robots.txt
+a stropem requestů `max(--max-requests, počet URL + 10)`. Opravené položky
+přepíšou stávající řádek (`itemId`/`url` se berou z uloženého řádku, takže
+nevznikne duplicita). Po běhu se pending řádky bez `part_id`, které vrátily
+404/410 nebo u kterých se stránka úspěšně stáhla a název zůstal tvořený jen
+značkou (CZ, JAWA, "JAWA Moto spol s r. o." ...), označí
+`match_status='ignored'`. Řádky, u kterých stažení selhalo (timeout, 5xx, DNS,
+robots) nebo na které nedošlo (strop requestů), zůstávají pending pro další
+refresh; lidská rozhodnutí (manual/auto/rejected) se nemění. `markStaleOutOfStock` se v tomto režimu
+nevolá. Název tvořený jen značkou je navíc obecné pravidlo kvality
+(`brand_name` v `itemQuality.ts`).
+
+**Ignored:** 13 existujících řádků vyřazených pravidly (11 motomax "Modely
+motocyklů, automobilů", 1 jawa-korda 99 900 Kč, 1 motojelinek 52 995 Kč) a 2
+řádky s cenou 0 jsou `ignored`.
+
+**MPN u motojelinku obsahuje kódy MVdily** (např. `mvdily0344`) - potenciální
+párovací klíč, až bude MVdily zdroj dat (Tier B' / MPN ↔ kód MVdily).
