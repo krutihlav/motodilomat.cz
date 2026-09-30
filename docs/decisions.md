@@ -60,3 +60,19 @@ stavu (`found`/`not_found`/`unknown`). Shop `javarna` (base_url
 `jawarna.cz`) má v probe-shops.ts speciální fallback: při `timeout`/`dns` se
 navíc zkusí doména bez 'w' (`javarna.cz`) a obě varianty jdou do výstupu -
 ukáže se tak, jde-li o překlep v seedu nebo o výpadek/blokaci.
+
+## 2026-09-30 – javarna: crawl vypnut (ETIMEDOUT z GH Actions), crawl cron oddělen od feedů
+
+**javarna:** `shops.crawl_enabled = false` (v DB už bylo, ověřeno 2026-09-30).
+Důvod: ETIMEDOUT z GH Actions, pravděpodobná blokace – řešit oslovením.
+Run #5 (2026-09-24) selhal na homepage, robots.txt i sitemap.xml
+(`https://www.jawarna.cz`), přitom 22.-23. 9. se z Actions stáhlo 87 produktů
+ze stejné domény - nejde tedy o překlep v `base_url`. Žádné proxy ani změna
+User-Agent, blokaci neobcházíme. Pozor: `--internal` (interní workflow)
+`crawl_enabled` ignoruje, takže `internal-import-verified-shops.yml` javarnu
+dál zkusí, pokud je v seznamu shopů.
+
+**Cron:** feed zdroje zůstávají v `import-feeds.yml` (3x denně), crawl zdroje
+mají `import-crawl.yml` (1x denně, 03:00 UTC) a berou jen shopy s
+`crawl_enabled = true` (= souhlas e-shopu, viz rozhodnutí z 2026-09-22) -
+dokud žádný takový shop není, běh nic nedělá.

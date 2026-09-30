@@ -1,5 +1,7 @@
 name: Import feedů e-shopů
 
+# Jen feed zdroje (feed_permission=true + feed_url), 3x denně. Crawl zdroje
+# mají vlastní workflow import-crawl.yml (1x denně).
 on:
   schedule:
     - cron: '0 6 * * *'
