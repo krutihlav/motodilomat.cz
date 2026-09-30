@@ -1,6 +1,11 @@
 import { Readable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
-import { runDryRun, runImport, type ImportRepository } from '../../scripts/import-feed';
+import {
+  runDryRun,
+  runImport,
+  type ImportRepository,
+  type KnownProduct,
+} from '../../scripts/import-feed';
 
 type FakeShop = {
   id: string;
@@ -19,6 +24,8 @@ function makeRepository(shop: FakeShop | null): ImportRepository {
     upsertProducts: async () => new Map(),
     insertPriceHistory: async () => {},
     markStaleOutOfStock: async () => 0,
+    getKnownProducts: async () => [],
+    ignorePendingProducts: async () => 0,
   };
 }
 
@@ -33,6 +40,8 @@ function makeSpyRepository(shop: FakeShop | null) {
     },
     insertPriceHistory: async () => {},
     markStaleOutOfStock: async () => 0,
+    getKnownProducts: async () => [],
+    ignorePendingProducts: async () => 0,
   };
   return { repository, upsertedItems };
 }
@@ -103,6 +112,8 @@ function makeCountingRepository(shop: FakeShop) {
       calls.markStale += 1;
       return 7;
     },
+    getKnownProducts: async () => [],
+    ignorePendingProducts: async () => 0,
   };
   return { repository, calls };
 }
@@ -174,6 +185,7 @@ describe('runImport - pojistky a pravidla kvality', () => {
       price_over_limit: 1,
       excluded_category: 1,
       vehicle_name: 1,
+      brand_name: 0,
     });
     expect(summary.flagged).toBe(2);
     expect(calls.flags.get('tank')).toEqual(['price_review']);
@@ -245,5 +257,105 @@ describe('runImport', () => {
     );
 
     expect(receivedMaxRequests).toBe(300);
+  });
+});
+
+describe('runImport - refresh known URLs', () => {
+  const known = (id: string, name: string, extra: Partial<KnownProduct> = {}): KnownProduct => ({
+    id: `row-${id}`,
+    shopItemId: `https://www.motojelinek.cz/p/${id}`,
+    url: `https://www.motojelinek.cz/p/${id}`,
+    name,
+    matchStatus: 'pending',
+    partId: null,
+    ...extra,
+  });
+
+  function makeRefreshRepository(rows: KnownProduct[]) {
+    const state = { rows: rows.map((row) => ({ ...row })), ignored: [] as string[], markStale: 0 };
+    const repository: ImportRepository = {
+      getShop: async () => CRAWL_SHOP as never,
+      getExistingProducts: async () => new Map(),
+      upsertProducts: async (_shopId, items) => {
+        for (const item of items) {
+          const row = state.rows.find((r) => r.shopItemId === item.itemId);
+          if (row) row.name = item.productName;
+        }
+        return new Map(items.map((item) => [item.itemId, `id-${item.itemId}`]));
+      },
+      insertPriceHistory: async () => {},
+      markStaleOutOfStock: async () => {
+        state.markStale += 1;
+        return 0;
+      },
+      getKnownProducts: async () => state.rows.map((row) => ({ ...row })),
+      ignorePendingProducts: async (ids) => {
+        state.ignored.push(...ids);
+        return ids.length;
+      },
+    };
+    return { repository, state };
+  }
+
+  it('fixes names, ignores 404 and still-brand-named pending rows, never touches other statuses', async () => {
+    const { repository, state } = makeRefreshRepository([
+      known('fixed', 'CZ'),
+      known('gone', 'CZ / HUN'),
+      known('irrelevant', 'CZ (Originál)'),
+      known('error', 'JAWA Moto spol s r. o.'),
+      known('manual', 'CZ', { matchStatus: 'manual' }),
+      known('matched', 'CZ', { matchStatus: 'auto', partId: 'part-1' }),
+      known('ok', 'Kryt spojky Jawa 350'),
+    ]);
+
+    let receivedUrls: string[] = [];
+    let receivedBudget = 0;
+    async function* fakeRefresh(_baseUrl: string, urls: { shopItemId: string; url: string }[], max?: number) {
+      receivedUrls = urls.map((u) => u.url);
+      receivedBudget = max ?? 0;
+      const item = (id: string, productName: string) => ({
+        kind: 'item' as const,
+        shopItemId: `https://www.motojelinek.cz/p/${id}`,
+        url: `https://www.motojelinek.cz/p/${id}`,
+        item: crawlItem(`https://www.motojelinek.cz/p/${id}`, productName, 500),
+      });
+      yield item('fixed', 'Ampérmetr 10A - JAWA Pérák, 500 OHC');
+      yield { kind: 'not_found' as const, shopItemId: 'https://www.motojelinek.cz/p/gone', url: 'https://www.motojelinek.cz/p/gone' };
+      yield item('irrelevant', 'Píst 41,25 (čep 12) - Simson S60');
+      yield { kind: 'error' as const, shopItemId: 'https://www.motojelinek.cz/p/error', url: 'https://www.motojelinek.cz/p/error' };
+      yield item('ok', 'Kryt spojky Jawa 350');
+    }
+
+    const summary = await runImport(
+      CRAWL_SHOP.id,
+      repository,
+      { refreshKnownUrls: fakeRefresh as never },
+      new Date(),
+      { refreshKnownUrls: true, maxRequests: 5 },
+    );
+
+    expect(receivedUrls).toHaveLength(7);
+    expect(receivedBudget).toBe(17); // max(5, 7 URL + 10)
+    expect(summary.refresh).toEqual({
+      knownUrls: 7,
+      outcomes: { item: 3, not_found: 1, no_product: 0, error: 1, disallowed: 0 },
+      namesFixed: 1,
+      ignoredNotFound: 1,
+      // 'irrelevant' (Simson není relevantní -> nepřepsal se, zůstal "CZ (Originál)") + 'error' (pořád značka)
+      ignoredBrandName: 2,
+    });
+    expect(state.ignored.sort()).toEqual(['row-error', 'row-gone', 'row-irrelevant']);
+    expect(state.rows.find((r) => r.id === 'row-fixed')?.name).toBe('Ampérmetr 10A - JAWA Pérák, 500 OHC');
+    expect(state.markStale).toBe(0);
+  });
+
+  it('refuses to run for feed-based shops', async () => {
+    const { repository } = makeRefreshRepository([]);
+    const feedShop = { ...CRAWL_SHOP, sourceType: 'feed' as const, feedUrl: 'https://x.test/f.xml' };
+    repository.getShop = async () => feedShop as never;
+
+    await expect(
+      runImport(feedShop.id, repository, {}, new Date(), { refreshKnownUrls: true, enforceGate: false }),
+    ).rejects.toThrow(/jen pro crawlované shopy/);
   });
 });

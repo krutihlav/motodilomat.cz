@@ -1,5 +1,6 @@
 import type {FeedItem} from './types';
 import {normalize} from './relevanceFilter';
+import {isBrandLikeName} from '../crawl/brandName';
 
 /** Nad touto cenou (Kč) jde o celý motocykl/motor, ne o díl - vyřadit. */
 export const PRICE_EXCLUDE_ABOVE = 30_000;
@@ -10,7 +11,8 @@ export type ExclusionReason =
   | 'price_invalid'
   | 'price_over_limit'
   | 'excluded_category'
-  | 'vehicle_name';
+  | 'vehicle_name'
+  | 'brand_name';
 
 /** Hodnoty pro shop_products.review_flags. */
 export type ReviewFlag = 'price_review' | 'modern_jawa';
@@ -20,6 +22,7 @@ export const EXCLUSION_REASONS: readonly ExclusionReason[] = [
   'price_over_limit',
   'excluded_category',
   'vehicle_name',
+  'brand_name',
 ];
 
 export type ItemAssessment = {
@@ -52,6 +55,11 @@ export function assessItem(item: FeedItem): ItemAssessment {
   }
   if (price > PRICE_EXCLUDE_ABOVE) {
     return {exclusion: 'price_over_limit', flags: []};
+  }
+
+  // Název tvořený jen značkou (chybně vytažený brand) - nemá smysl ukládat ani párovat.
+  if (isBrandLikeName(item.productName)) {
+    return {exclusion: 'brand_name', flags: []};
   }
 
   const category = topCategory(item.categoryText);

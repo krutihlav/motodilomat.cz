@@ -69,6 +69,12 @@ describe('assessItem - kategorie a název', () => {
   });
 });
 
+describe('assessItem - název tvořený jen značkou', () => {
+  it.each(['CZ', 'CZ / HUN', 'JAWA Moto spol s r. o.'])('excludes brand-only name "%s"', (productName) => {
+    expect(assessItem(item({ productName })).exclusion).toBe('brand_name');
+  });
+});
+
 describe('assessItem - moderní Jawa', () => {
   it.each([
     'Plexi sportovní - nízké RVM 500 by Jawa adventure',
