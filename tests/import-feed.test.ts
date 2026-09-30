@@ -75,6 +75,12 @@ describe('isRelevantItem', () => {
     ['Paprsek kola - Stadion S22', undefined],
     ['Kryt řetězu (S23)', undefined],
     ['Řetěz s23 zadní', undefined],
+    ['Kabel spojky Stella', undefined],
+    ['Řetěz Babetta134 zadní', undefined],
+    ['Píst Jawa350 STD', undefined],
+    ['Cívka CZ175', undefined],
+    ['Blatník Pionýr21', undefined],
+    ['Sedlo Babeta207', undefined],
   ])('marks "%s" as relevant', (productName) => {
     expect(isRelevantItem(item({productName}))).toBe(true);
   });
@@ -96,6 +102,10 @@ describe('isRelevantItem', () => {
     ['Šroub S2 M8'],
     ['Nalepka S230'],
     ['Držák S2200'],
+    ['Šroub jawa3500'],
+    ['Ložisko jawa1'],
+    ['Řetěz Honda350'],
+    ['Kabel stellar'],
   ])('marks "%s" as NOT relevant', (productName) => {
     expect(isRelevantItem(item({productName}))).toBe(false);
   });
