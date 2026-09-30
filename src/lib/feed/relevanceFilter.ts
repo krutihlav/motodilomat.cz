@@ -15,6 +15,14 @@ export const RELEVANT_KEYWORDS = [
   'panelka',
   'stadion',
   'mustang',
+  'jawetta',
+  'cezeta', // pokrývá i "čezeta" po odstranění diakritiky
+  'velorex',
+  'babeta', // častý překlep Babetty
+  // Modely Stadion - jen jako celé slovo (\b), "S110" ani "S11W" nesmí projít.
+  's11',
+  's22',
+  's23',
 ] as const;
 
 function stripDiacritics(text: string): string {
