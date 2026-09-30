@@ -66,6 +66,15 @@ describe('isRelevantItem', () => {
     ['Výfuk pro Kývačka', undefined],
     ['Kožené sedlo Panelka', undefined],
     ['Karburátor pro Mustang M175', undefined],
+    ['Sedlo Jawetta Sport', undefined],
+    ['Řetěz Čezeta 175 typ 502', undefined],
+    ['Řetěz Cezeta 175', undefined],
+    ['Blatník Velorex 562', undefined],
+    ['Píst Babeta 207', undefined],
+    ['Guma na sedlo S11', undefined],
+    ['Paprsek kola - Stadion S22', undefined],
+    ['Kryt řetězu (S23)', undefined],
+    ['Řetěz s23 zadní', undefined],
   ])('marks "%s" as relevant', (productName) => {
     expect(isRelevantItem(item({productName}))).toBe(true);
   });
@@ -81,6 +90,12 @@ describe('isRelevantItem', () => {
     ['Brzdové destičky Honda CBR 600'],
     ['Motorový olej Motul 10W-40'],
     ['Řetěz Yamaha YZF-R1'],
+    ['Držák S110 univerzální'],
+    ['Kryt S11W'],
+    ['Nástavec MS11'],
+    ['Šroub S2 M8'],
+    ['Nalepka S230'],
+    ['Držák S2200'],
   ])('marks "%s" as NOT relevant', (productName) => {
     expect(isRelevantItem(item({productName}))).toBe(false);
   });
