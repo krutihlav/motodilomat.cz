@@ -76,3 +76,28 @@ dál zkusí, pokud je v seznamu shopů.
 mají `import-crawl.yml` (1x denně, 03:00 UTC) a berou jen shopy s
 `crawl_enabled = true` (= souhlas e-shopu, viz rozhodnutí z 2026-09-22) -
 dokud žádný takový shop není, běh nic nedělá.
+
+## 2026-09-30 – Pravidla kvality položek, název z Upgates, pojistka proti prázdnému crawlu
+
+**Název u motojelinku (Upgates):** `extractMicrodataProduct` bral první
+`itemprop="name"` v Product scope, což je vnořený
+`<span itemprop="brand" itemscope><meta itemprop="name" content="CZ">`
+(ověřeno na skutečném HTML 3 stránek, `name` byl "CZ", "CZ / HUN", "JAWA Moto
+spol s r. o."). Název se teď čte jen z vlastní úrovně Product scope (bez
+vnořených brand/manufacturer/offers), fallback `<h1>`, pak `og:title`
+(bez přípony " :: SHOP"). Cena/dostupnost se dál čtou z vnořeného `offers`.
+Už uložené řádky motojelinku mají starý (špatný) název, dokud je crawl
+znovu nepřepíše.
+
+**Pravidla (`src/lib/feed/itemQuality.ts`, po relevanci, před upsertem):**
+vyřazeno (neukládá se) = cena po zaokrouhlení <= 0 / NaN, cena > 30 000 Kč,
+top kategorie "Modely motocyklů, automobilů", název `^motocykl\b` nebo
+`^motor (bez|kompletní)\b`. Flag v `shop_products.review_flags`
+(migrace `011`) = `price_review` (15 000-30 000 Kč) a `modern_jawa` (název s
+CL 42 / forty two / RVM / adventure / 300 CL). Ceny 1-9 Kč jsou legitimní
+(šrouby, matice), žádný spodní práh neexistuje.
+
+**Pojistka:** `runImport` při 0 položkách ze zdroje nevolá
+`markStaleOutOfStock` (jen varování). `javarna` už není ve výchozím seznamu
+`internal-import-verified-shops.yml`. Plánovaný `--internal` crawl se
+nenasazuje, internal import zůstává jen ruční (`workflow_dispatch`).

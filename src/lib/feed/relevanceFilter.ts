@@ -21,7 +21,7 @@ function stripDiacritics(text: string): string {
   return text.normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
-function normalize(text: string): string {
+export function normalize(text: string): string {
   return stripDiacritics(text).toLowerCase();
 }
 

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { extractMicrodataProduct, hasProductTypeMeta } from '../../src/lib/crawl/microdata';
 
 describe('extractMicrodataProduct', () => {
@@ -159,6 +161,97 @@ describe('extractMicrodataProduct', () => {
     const product = extractMicrodataProduct(html);
     expect(product?.name).toBe('Řetěz Simson S51');
     expect(product?.priceVat).toBe(350);
+  });
+});
+
+describe('extractMicrodataProduct - název vs. vnořený brand (Upgates / motojelinek.cz)', () => {
+  it('uses the product h1 itemprop="name", not the nested brand name ("CZ")', () => {
+    const html = readFileSync(join(__dirname, '../fixtures/upgates-product.html'), 'utf-8');
+
+    const product = extractMicrodataProduct(html);
+    expect(product).toMatchObject({
+      name: 'Ampérmetr 10A (ukostření na mínus) - JAWA Pérák, 500 OHC',
+      priceVat: 2100,
+      priceCurrency: 'CZK',
+      inStock: true,
+      mpn: 'mvdily0344',
+      sku: '5751',
+    });
+  });
+
+  it('ignores itemprop="name" nested in brand, manufacturer and offers scopes', () => {
+    const html = `
+      <div itemscope itemtype="https://schema.org/Product">
+        <span itemprop="manufacturer" itemscope itemtype="https://schema.org/Organization">
+          <meta itemprop="name" content="JAWA Moto spol s r. o.">
+        </span>
+        <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+          <span itemprop="name">Akční nabídka</span>
+          <meta itemprop="price" content="100">
+        </div>
+        <h2 itemprop="name">Píst 41,25 - Simson S60</h2>
+      </div>
+    `;
+
+    const product = extractMicrodataProduct(html);
+    expect(product?.name).toBe('Píst 41,25 - Simson S60');
+    expect(product?.priceVat).toBe(100);
+  });
+
+  it('falls back to <h1> when the Product scope has no own name', () => {
+    const html = `
+      <h1>Blok motoru (JAWA) - JAWA 350 638-640</h1>
+      <div itemscope itemtype="https://schema.org/Product">
+        <span itemprop="brand" itemscope itemtype="https://schema.org/Brand">
+          <meta itemprop="name" content="JAWA Moto spol s r. o.">
+        </span>
+        <meta itemprop="price" content="9995">
+      </div>
+    `;
+
+    expect(extractMicrodataProduct(html)?.name).toBe('Blok motoru (JAWA) - JAWA 350 638-640');
+  });
+
+  it('falls back to <h1> when the name is just the brand', () => {
+    const html = `
+      <h1>Píst 41,25 (čep 12) - Simson S60</h1>
+      <div itemscope itemtype="https://schema.org/Product">
+        <span itemprop="name">CZ / HUN</span>
+        <span itemprop="brand" itemscope itemtype="https://schema.org/Brand">
+          <meta itemprop="name" content="CZ / HUN">
+        </span>
+        <meta itemprop="price" content="220">
+      </div>
+    `;
+
+    expect(extractMicrodataProduct(html)?.name).toBe('Píst 41,25 (čep 12) - Simson S60');
+  });
+
+  it.each(['CZ', 'JAWA', 'JAWA Moto spol s r. o.'])(
+    'treats the known brand-only name "%s" as missing',
+    (brand) => {
+      const html = `
+        <h1>Kryt spojky Jawa 350</h1>
+        <div itemscope itemtype="https://schema.org/Product">
+          <span itemprop="name">${brand}</span>
+          <meta itemprop="price" content="500">
+        </div>
+      `;
+
+      expect(extractMicrodataProduct(html)?.name).toBe('Kryt spojky Jawa 350');
+    },
+  );
+
+  it('falls back to og:title (without the " :: SHOP" suffix) when there is no <h1>', () => {
+    const html = `
+      <meta property="og:title" content="Kryt spojky - Jawa 350 :: MOTOJELINEK.CZ">
+      <div itemscope itemtype="https://schema.org/Product">
+        <span itemprop="name">CZ</span>
+        <meta itemprop="price" content="500">
+      </div>
+    `;
+
+    expect(extractMicrodataProduct(html)?.name).toBe('Kryt spojky - Jawa 350');
   });
 });
 

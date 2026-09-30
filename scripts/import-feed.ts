@@ -6,6 +6,7 @@ import { createServiceRoleClient } from '../src/lib/supabase/server';
 import { parseHeurekaFeed } from '../src/lib/feed/parseHeurekaFeed';
 import { parseGoogleFeed } from '../src/lib/feed/parseGoogleFeed';
 import { isRelevantItem } from '../src/lib/feed/relevanceFilter';
+import { assessItem, EXCLUSION_REASONS, type ExclusionReason } from '../src/lib/feed/itemQuality';
 import type { FeedItem } from '../src/lib/feed/types';
 import { crawlShop } from '../src/lib/crawl/crawlShop';
 
@@ -26,8 +27,18 @@ export type ImportSummary = {
   newItems: number;
   priceChanges: number;
   markedOutOfStock: number;
+  /** true = zdroj vrátil 0 položek, markStaleOutOfStock se nevolal (selhaný crawl/feed nesmí shodit sklad). */
+  staleMarkingSkipped: boolean;
+  /** Relevantní položky vyřazené pravidly kvality (viz itemQuality.ts) - neukládají se. */
+  excluded: Record<ExclusionReason, number>;
+  /** Uložené položky s review_flags (cena k ověření, moderní Jawa). */
+  flagged: number;
   errors: number;
 };
+
+function emptyExcluded(): Record<ExclusionReason, number> {
+  return { price_invalid: 0, price_over_limit: 0, excluded_category: 0, vehicle_name: 0 };
+}
 
 type Shop = {
   id: string;
@@ -51,7 +62,12 @@ type ExistingProduct = {
 export interface ImportRepository {
   getShop(shopId: string): Promise<Shop | null>;
   getExistingProducts(shopId: string): Promise<Map<string, ExistingProduct>>;
-  upsertProducts(shopId: string, items: FeedItem[], now: Date): Promise<Map<string, string>>; // shopItemId -> shop_products.id
+  upsertProducts(
+    shopId: string,
+    items: FeedItem[],
+    now: Date,
+    reviewFlags?: Map<string, string[]>, // shopItemId -> review_flags
+  ): Promise<Map<string, string>>; // shopItemId -> shop_products.id
   insertPriceHistory(
     entries: { shopProductId: string; price: number; inStock: boolean }[],
   ): Promise<void>;
@@ -105,7 +121,12 @@ export class SupabaseImportRepository implements ImportRepository {
     return map;
   }
 
-  async upsertProducts(shopId: string, items: FeedItem[], now: Date): Promise<Map<string, string>> {
+  async upsertProducts(
+    shopId: string,
+    items: FeedItem[],
+    now: Date,
+    reviewFlags: Map<string, string[]> = new Map(),
+  ): Promise<Map<string, string>> {
     const rows = items.map((item) => ({
       shop_id: shopId,
       shop_item_id: item.itemId,
@@ -118,6 +139,7 @@ export class SupabaseImportRepository implements ImportRepository {
       delivery_days: item.deliveryDays ?? null,
       category_text: item.categoryText ?? null,
       raw: item,
+      review_flags: reviewFlags.get(item.itemId) ?? [],
       last_seen_at: now.toISOString(),
     }));
 
@@ -269,10 +291,14 @@ export async function runImport(
     newItems: 0,
     priceChanges: 0,
     markedOutOfStock: 0,
+    staleMarkingSkipped: false,
+    excluded: emptyExcluded(),
+    flagged: 0,
     errors: 0,
   };
 
   let batch: FeedItem[] = [];
+  const reviewFlags = new Map<string, string[]>();
 
   const flushBatch = async () => {
     if (batch.length === 0) {
@@ -280,7 +306,7 @@ export async function runImport(
     }
 
     try {
-      const idsByItem = await repository.upsertProducts(shopId, batch, now);
+      const idsByItem = await repository.upsertProducts(shopId, batch, now, reviewFlags);
 
       const priceHistoryEntries: { shopProductId: string; price: number; inStock: boolean }[] = [];
       for (const item of batch) {
@@ -327,6 +353,17 @@ export async function runImport(
     }
 
     summary.relevant += 1;
+
+    const assessment = assessItem(item);
+    if (assessment.exclusion) {
+      summary.excluded[assessment.exclusion] += 1;
+      continue;
+    }
+    if (assessment.flags.length > 0) {
+      summary.flagged += 1;
+      reviewFlags.set(item.itemId, assessment.flags);
+    }
+
     batch.push(item);
 
     if (batch.length >= CHUNK_SIZE) {
@@ -335,8 +372,16 @@ export async function runImport(
   }
   await flushBatch();
 
-  const cutoff = new Date(now.getTime() - STALE_AFTER_DAYS * 24 * 60 * 60 * 1000);
-  summary.markedOutOfStock = await repository.markStaleOutOfStock(shopId, cutoff);
+  if (summary.totalInFeed === 0) {
+    // Selhaný crawl/feed (timeout, blokace, prázdný feed) nesmí označit celý sklad jako nedostupný.
+    summary.staleMarkingSkipped = true;
+    console.warn(
+      `⚠️  Shop "${shopId}": zdroj vrátil 0 položek - markStaleOutOfStock se nevolá, existující nabídky zůstávají beze změny.`,
+    );
+  } else {
+    const cutoff = new Date(now.getTime() - STALE_AFTER_DAYS * 24 * 60 * 60 * 1000);
+    summary.markedOutOfStock = await repository.markStaleOutOfStock(shopId, cutoff);
+  }
 
   return summary;
 }
@@ -346,6 +391,8 @@ export type DryRunSummary = {
   source: string;
   totalInFeed: number;
   relevant: number;
+  excluded: Record<ExclusionReason, number>;
+  flagged: number;
   samples: FeedItem[];
 };
 
@@ -375,6 +422,8 @@ export async function runDryRun(
     source,
     totalInFeed: 0,
     relevant: 0,
+    excluded: emptyExcluded(),
+    flagged: 0,
     samples: [],
   };
 
@@ -386,6 +435,16 @@ export async function runDryRun(
     }
 
     summary.relevant += 1;
+
+    const assessment = assessItem(item);
+    if (assessment.exclusion) {
+      summary.excluded[assessment.exclusion] += 1;
+      continue;
+    }
+    if (assessment.flags.length > 0) {
+      summary.flagged += 1;
+    }
+
     if (summary.samples.length < DRY_RUN_SAMPLE_SIZE) {
       summary.samples.push(item);
     }
@@ -394,12 +453,21 @@ export async function runDryRun(
   return summary;
 }
 
+function printQualityCounts(excluded: Record<ExclusionReason, number>, flagged: number): void {
+  const total = EXCLUSION_REASONS.reduce((sum, reason) => sum + excluded[reason], 0);
+  console.log(
+    `Vyřazeno pravidly:       ${total} (cena<=0: ${excluded.price_invalid}, cena>30000: ${excluded.price_over_limit}, kategorie: ${excluded.excluded_category}, vozidlo/motor: ${excluded.vehicle_name})`,
+  );
+  console.log(`Flagováno k kontrole:    ${flagged}`);
+}
+
 function printDryRunSummary(summary: DryRunSummary): void {
   console.log('--- Dry-run importu (nic se nezapisuje) ---');
   console.log(`Shop:                    ${summary.shopId}`);
   console.log(`Zdroj:                   ${summary.source}`);
   console.log(`Položek celkem:          ${summary.totalInFeed}`);
   console.log(`Relevantních:            ${summary.relevant}`);
+  printQualityCounts(summary.excluded, summary.flagged);
   console.log(`--- Ukázka (max ${DRY_RUN_SAMPLE_SIZE} relevantních) ---`);
 
   summary.samples.forEach((item, index) => {
@@ -420,11 +488,15 @@ function printSummary(summary: ImportSummary): void {
   console.log(`Shop:                    ${summary.shopId}`);
   console.log(`Položek celkem ve feedu: ${summary.totalInFeed}`);
   console.log(`Relevantních:            ${summary.relevant}`);
+  printQualityCounts(summary.excluded, summary.flagged);
   console.log(`Nových:                  ${summary.newItems}`);
   console.log(`Změněných cen:           ${summary.priceChanges}`);
   console.log(
     `Označeno jako nedostupné (>${STALE_AFTER_DAYS} dny neviděno): ${summary.markedOutOfStock}`,
   );
+  if (summary.staleMarkingSkipped) {
+    console.log('⚠️  Zdroj vrátil 0 položek - označování nedostupných přeskočeno.');
+  }
   console.log(`Chyb:                    ${summary.errors}`);
 }
 

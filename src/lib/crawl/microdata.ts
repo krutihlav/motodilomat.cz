@@ -109,6 +109,146 @@ function extractProductScope(html: string): string | null {
   return html.slice(start.startIndex, end);
 }
 
+const VOID_TAGS = new Set(['meta', 'link', 'img', 'br', 'hr', 'input', 'source']);
+
+const NESTED_SCOPE_RE = /<([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*?\sitemscope(?=[\s=>/])[^>]*>/i;
+
+/**
+ * Vrátí HTML Product scope bez vnořených itemscope bloků (brand, manufacturer,
+ * offers, ...) a bez vlastního otevíracího tagu. Hodnoty `itemprop="name"`
+ * z vnořených scope (typicky `<span itemprop="brand" itemscope><meta
+ * itemprop="name" content="CZ">`) patří brandu, ne produktu.
+ */
+function stripNestedScopes(scopeHtml: string): string {
+  let own = scopeHtml.slice(scopeHtml.indexOf('>') + 1);
+
+  for (;;) {
+    const match = NESTED_SCOPE_RE.exec(own);
+    if (!match) {
+      return own;
+    }
+
+    const tagName = match[1].toLowerCase();
+    const openEnd = match.index + match[0].length;
+    if (VOID_TAGS.has(tagName) || match[0].endsWith('/>')) {
+      own = own.slice(0, match.index) + own.slice(openEnd);
+      continue;
+    }
+
+    const closeStart = findElementEnd(own, tagName, openEnd);
+    const closeEnd = closeStart < own.length ? own.indexOf('>', closeStart) + 1 : own.length;
+    own = own.slice(0, match.index) + own.slice(closeEnd);
+  }
+}
+
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0?39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&');
+}
+
+function htmlToText(html: string): string {
+  return decodeEntities(html.replace(/<[^>]+>/g, ' '))
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Název produktu z `itemprop="name"` na úrovni Product scope: `content=`
+ * atribut, jinak celý textový obsah elementu včetně vnořených tagů
+ * (`<h1 itemprop="name"><span>...</span></h1>`).
+ */
+function extractOwnName(scopeHtml: string): string | undefined {
+  const own = stripNestedScopes(scopeHtml);
+  const match = /<([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*\bitemprop=["']name["'][^>]*>/i.exec(own);
+  if (!match) {
+    return undefined;
+  }
+
+  const attr = match[0].match(/(?:content|value)=["']([^"']+)["']/i);
+  if (attr) {
+    return decodeEntities(attr[1]).trim() || undefined;
+  }
+
+  const tagName = match[1].toLowerCase();
+  if (VOID_TAGS.has(tagName)) {
+    return undefined;
+  }
+
+  const innerStart = match.index + match[0].length;
+  const innerEnd = findElementEnd(own, tagName, innerStart);
+  return htmlToText(own.slice(innerStart, innerEnd)) || undefined;
+}
+
+/** Hodnota nejbližšího vnořeného brand/manufacturer itemprop="name" (k rozpoznání "název = značka"). */
+function extractBrandName(scopeHtml: string): string | undefined {
+  const match = /<([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*\bitemprop=["'](?:brand|manufacturer)["'][^>]*>/i.exec(
+    scopeHtml,
+  );
+  if (!match) {
+    return undefined;
+  }
+  const tagName = match[1].toLowerCase();
+  const innerStart = match.index + match[0].length;
+  const inner = scopeHtml.slice(innerStart, findElementEnd(scopeHtml, tagName, innerStart));
+  const nameTag = /<[^>]+itemprop=["']name["'][^>]*>/i.exec(inner);
+  const content = nameTag?.[0].match(/content=["']([^"']+)["']/i)?.[1];
+  return content ? decodeEntities(content).trim() : undefined;
+}
+
+function normalizeForCompare(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[.\s]+/g, ' ')
+    .trim();
+}
+
+/** Značky, které e-shopy omylem dávají do názvu produktu (motojelinek.cz: "CZ", "JAWA Moto spol s r. o."). */
+const BRAND_ONLY_NAMES = new Set(['cz', 'jawa', 'twn', 'jawa moto spol s r o']);
+
+function isBrandOnlyName(name: string, brandName: string | undefined): boolean {
+  const normalized = normalizeForCompare(name);
+  return (
+    BRAND_ONLY_NAMES.has(normalized) ||
+    (brandName !== undefined && normalized === normalizeForCompare(brandName))
+  );
+}
+
+function extractH1(html: string): string | undefined {
+  const match = /<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(html);
+  return match ? htmlToText(match[1]) || undefined : undefined;
+}
+
+/** og:title bez přípony " :: NÁZEV SHOPU" (Upgates). */
+function extractOgTitle(html: string): string | undefined {
+  const tag =
+    /<meta[^>]+property=["']og:title["'][^>]*>/i.exec(html)?.[0] ??
+    /<meta[^>]+content=["'][^"']*["'][^>]+property=["']og:title["'][^>]*>/i.exec(html)?.[0];
+  const content = tag?.match(/content=["']([^"']*)["']/i)?.[1];
+  if (!content) {
+    return undefined;
+  }
+  return decodeEntities(content).replace(/\s+::\s+[^:]+$/, '').trim() || undefined;
+}
+
+/**
+ * Název produktu: vlastní itemprop="name" Product scope (bez vnořeného
+ * brandu/offers); je-li prázdný nebo je to jen značka, pak <h1>, pak og:title.
+ */
+function resolveProductName(html: string, scope: string): string | undefined {
+  const own = extractOwnName(scope);
+  if (own && !isBrandOnlyName(own, extractBrandName(scope))) {
+    return own;
+  }
+  return extractH1(html) ?? extractOgTitle(html);
+}
+
 function parseAvailability(value: string | undefined): boolean | undefined {
   if (!value) {
     return undefined;
@@ -151,7 +291,7 @@ export function extractMicrodataProduct(html: string): MicrodataProduct | null {
   }
 
   return {
-    name: extractItemprop(scope, 'name'),
+    name: resolveProductName(html, scope),
     priceVat,
     priceCurrency: extractItemprop(scope, 'priceCurrency'),
     inStock: parseAvailability(extractItemprop(scope, 'availability')),
