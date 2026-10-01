@@ -1,0 +1,44 @@
+name: Dry-run párování modelů (read-only)
+
+# Jen čte shop_products. Nic nezapisuje: write-product-models.ts běží bez --write,
+# preview-quality-ignored.ts bez --apply.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/intelligent-bardeen-pdzbyl]
+    paths: ['.github/workflows/models-dry-run.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Report pokrytí (plné názvy z živé DB)
+        run: |
+          npx tsx scripts/dry-run-models.ts --out report.md
+          cat report.md
+
+      - name: Co by zápis vytvořil (bez --write)
+        run: npx tsx scripts/write-product-models.ts
+
+      - name: Náhled pending -> ignored (merch, Simson; bez --apply)
+        run: npx tsx scripts/preview-quality-ignored.ts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: models-dry-run-report
+          path: report.md

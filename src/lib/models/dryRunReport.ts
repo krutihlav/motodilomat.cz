@@ -1,4 +1,5 @@
 import { parseModels, type MatchLevel, type ParseResult } from './parseModels';
+import { nameExclusion } from '../feed/itemQuality';
 import { CANONICAL_MODELS, type CanonicalModel } from './seed';
 
 /** Jedna (případně sloučená) položka dry-runu; count = kolik shop_products řádků sdílí název. */
@@ -20,6 +21,17 @@ export type DryRunReport = {
   unresolved: { brand: string; kind: string; token: string; count: number }[];
   tooManyModels: RowResult[];
   conflicts: RowResult[];
+  /** Totéž bez řádků, které nová pravidla vyřadí (merch, Simson bez naší značky). */
+  filtered: {
+    excluded: { merch: number; simson_only: number };
+    byShop: Record<string, Record<LevelKey, number>>;
+    totals: Record<LevelKey, number>;
+    totalRows: number;
+    /** řádků s ≥1 vazbou na model a vazeb shop_product_models, které by zápis vytvořil */
+    rowsWithLinks: number;
+    links: { total: number; type: number; nickname: number };
+    rowsWithGeneric: number;
+  };
   extras: {
     /** nezařazený token "206": počet řádků a až 10 různých názvů */
     token206: { rows: number; names: string[] };
@@ -116,6 +128,41 @@ export function buildReport(
   const unmatched = results.filter((r) => r.parse.level === null);
   const noCueTotal = Object.values(options.noCueByShop ?? {}).reduce((a, b) => a + b, 0);
 
+  const filtered: DryRunReport['filtered'] = {
+    excluded: { merch: 0, simson_only: 0 },
+    byShop: {},
+    totals: emptyLevels(),
+    totalRows: 0,
+    rowsWithLinks: 0,
+    links: { total: 0, type: 0, nickname: 0 },
+    rowsWithGeneric: 0,
+  };
+  for (const result of results) {
+    const excluded = nameExclusion(result.name);
+    if (excluded) {
+      filtered.excluded[excluded] += result.count;
+      continue;
+    }
+    const key: LevelKey = result.parse.level ?? 'none';
+    filtered.byShop[result.shopId] ??= emptyLevels();
+    filtered.byShop[result.shopId][key] += result.count;
+    filtered.totals[key] += result.count;
+    filtered.totalRows += result.count;
+    if (result.parse.models.length > 0) filtered.rowsWithLinks += result.count;
+    if (result.parse.generic.length > 0) filtered.rowsWithGeneric += result.count;
+    for (const hit of result.parse.models) {
+      filtered.links.total += result.count;
+      filtered.links[hit.level] += result.count;
+    }
+  }
+  // Řádky bez klíčového slova se parseru nepředávají (nemají shodu); nepatří k merchi ani Simsonu.
+  for (const [shopId, count] of Object.entries(options.noCueByShop ?? {})) {
+    filtered.byShop[shopId] ??= emptyLevels();
+    filtered.byShop[shopId].none += count;
+    filtered.totals.none += count;
+    filtered.totalRows += count;
+  }
+
   const bySlug = new Map(models.map((m) => [m.slug, m]));
   const extras: DryRunReport['extras'] = {
     token206: { rows: 0, names: [] },
@@ -156,6 +203,7 @@ export function buildReport(
       (a, b) => b.count - a.count || a.token.localeCompare(b.token),
     ),
     tooManyModels: results.filter((r) => r.parse.models.length > SUSPICIOUS_MODEL_LIMIT),
+    filtered,
     extras,
     conflicts: results.filter(
       (r) =>
@@ -200,6 +248,34 @@ export function renderReport(
   };
   for (const shop of shops) row(shop, report.byShop[shop]);
   row('**celkem**', report.totals);
+  out.push('');
+
+  const f = report.filtered;
+  out.push('## Po vyřazení merche a Simsonu (nová pravidla kvality)', '');
+  out.push(
+    `Vyřazeno: merch ${f.excluded.merch}, Simson bez naší značky ${f.excluded.simson_only}. Zbývá **${f.totalRows}** řádků.`,
+    '',
+  );
+  out.push(`| shop | řádků | ${LEVEL_ORDER.join(' | ')} | pokryto modelem (type+nickname) |`);
+  out.push(`|---|---:|${LEVEL_ORDER.map(() => '---:').join('|')}|---:|`);
+  const rowF = (label: string, levels: Record<LevelKey, number>) => {
+    const total = LEVEL_ORDER.reduce((sum, k) => sum + levels[k], 0);
+    out.push(
+      `| ${label} | ${total} | ${LEVEL_ORDER.map((k) => `${levels[k]} (${pct(levels[k], total)})`).join(' | ')} | ${pct(levels.type + levels.nickname, total)} |`,
+    );
+  };
+  for (const shop of Object.keys(f.byShop).sort()) rowF(shop, f.byShop[shop]);
+  rowF('**celkem**', f.totals);
+  out.push('');
+  out.push('### Co by zápis vytvořil', '');
+  out.push(
+    `- shop_products k aktualizaci (model_match_level, fit_generic): **${f.totalRows}** řádků`,
+  );
+  out.push(`- řádků s ≥1 vazbou na konkrétní model: **${f.rowsWithLinks}**`);
+  out.push(
+    `- vazeb shop_product_models: **${f.links.total}** (type ${f.links.type}, nickname ${f.links.nickname})`,
+  );
+  out.push(`- řádků s fit_generic (displacement / brand): **${f.rowsWithGeneric}**`);
   out.push('');
 
   out.push('## 30 náhodných ukázek (název → modely → úroveň)', '');
