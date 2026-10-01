@@ -18,6 +18,7 @@ export const RELEVANT_KEYWORDS = [
   'jawetta',
   'cezeta', // pokrývá i "čezeta" po odstranění diakritiky
   'velorex',
+  'stella', // Babetta 210 Stella (název i bez značky)
   'babeta', // častý překlep Babetty
   // Modely Stadion - jen jako celé slovo (\b), "S110" ani "S11W" nesmí projít.
   's11',
@@ -33,9 +34,34 @@ export function normalize(text: string): string {
   return stripDiacritics(text).toLowerCase();
 }
 
-const KEYWORD_PATTERNS = RELEVANT_KEYWORDS.map(
-  (keyword) => new RegExp(`\\b${keyword}\\b`, 'i'),
-);
+/**
+ * Značky/přezdívky, za které se smí bez mezery přilepit číslo
+ * (babetta134, jawa350, cz175, pionyr21). Holé "cz75" projde také - shop
+ * s děly pro dvoutakty ho běžně neprodává a ruční kontrola je levnější
+ * než ztracené díly.
+ */
+const GLUED_BRANDS = [
+  'jawa',
+  'cz',
+  'babetta',
+  'babeta',
+  'pionyr',
+  'stella',
+  'perak',
+  'kyvacka',
+  'panelka',
+  'mustang',
+  'jawetta',
+  'cezeta',
+  'velorex',
+  'stadion',
+] as const;
+
+const KEYWORD_PATTERNS = [
+  ...RELEVANT_KEYWORDS.map((keyword) => new RegExp(`\\b${keyword}\\b`, 'i')),
+  // Slepená značka + 2-3 číslice bez mezery, celé slovo: jawa350, babetta134.
+  new RegExp(`\\b(?:${GLUED_BRANDS.join('|')})\\d{2,3}\\b`, 'i'),
+];
 
 /**
  * Vrací true, pokud název nebo kategorie položky obsahuje některé z
