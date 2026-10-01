@@ -4,6 +4,10 @@ name: Pending -> ignored (merch, Simson) - apply
 # vyřazené pravidly merch / simson_only na match_status='ignored' a vypíše počty.
 on:
   workflow_dispatch:
+  # Registrace workflow na větvi: běží jednou po pushi tohoto souboru (idempotentní).
+  push:
+    branches: [claude/intelligent-bardeen-pdzbyl]
+    paths: ['.github/workflows/quality-ignored-apply.yml']
 
 permissions:
   contents: read
