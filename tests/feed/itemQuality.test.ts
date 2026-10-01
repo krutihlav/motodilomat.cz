@@ -11,9 +11,12 @@ const item = (overrides: Partial<FeedItem>): FeedItem => ({
 });
 
 describe('assessItem - ceny', () => {
-  it.each([0, -5, Number.NaN, Number.POSITIVE_INFINITY, 0.4])('excludes invalid price %s', (priceVat) => {
-    expect(assessItem(item({ priceVat })).exclusion).toBe('price_invalid');
-  });
+  it.each([0, -5, Number.NaN, Number.POSITIVE_INFINITY, 0.4])(
+    'excludes invalid price %s',
+    (priceVat) => {
+      expect(assessItem(item({ priceVat })).exclusion).toBe('price_invalid');
+    },
+  );
 
   it('keeps cheap real parts (1-9 Kč šrouby, matice)', () => {
     expect(assessItem(item({ priceVat: 3, productName: 'Podložka M4 BABETTA 228' }))).toEqual({
@@ -28,8 +31,13 @@ describe('assessItem - ceny', () => {
   });
 
   it('keeps 30 000 Kč exactly and flags 15 000-30 000 Kč for review', () => {
-    expect(assessItem(item({ priceVat: 30_000 }))).toEqual({ exclusion: null, flags: ['price_review'] });
-    expect(assessItem(item({ priceVat: 16_052, productName: 'Nádrž po renovaci Jawa-čz 353' }))).toEqual({
+    expect(assessItem(item({ priceVat: 30_000 }))).toEqual({
+      exclusion: null,
+      flags: ['price_review'],
+    });
+    expect(
+      assessItem(item({ priceVat: 16_052, productName: 'Nádrž po renovaci Jawa-čz 353' })),
+    ).toEqual({
       exclusion: null,
       flags: ['price_review'],
     });
@@ -70,9 +78,12 @@ describe('assessItem - kategorie a název', () => {
 });
 
 describe('assessItem - název tvořený jen značkou', () => {
-  it.each(['CZ', 'CZ / HUN', 'JAWA Moto spol s r. o.'])('excludes brand-only name "%s"', (productName) => {
-    expect(assessItem(item({ productName })).exclusion).toBe('brand_name');
-  });
+  it.each(['CZ', 'CZ / HUN', 'JAWA Moto spol s r. o.'])(
+    'excludes brand-only name "%s"',
+    (productName) => {
+      expect(assessItem(item({ productName })).exclusion).toBe('brand_name');
+    },
+  );
 });
 
 describe('assessItem - moderní Jawa', () => {
@@ -82,18 +93,60 @@ describe('assessItem - moderní Jawa', () => {
     'Kryt Jawa 300 CL',
     'Jawa Forty Two blatník',
     'Sedlo Jawa forty two 42',
+    'Lamela spojky, kovová (JAWA) - JAWA 350 OHC',
   ])('flags "%s" but keeps it', (productName) => {
     expect(assessItem(item({ productName }))).toEqual({ exclusion: null, flags: ['modern_jawa'] });
   });
 
   it('does not flag classic Jawa models', () => {
     expect(assessItem(item({ productName: 'Píst Jawa 350 typ 634' })).flags).toEqual([]);
+    expect(assessItem(item({ productName: 'Ciferník Jawa 500 OHC šnek' })).flags).toEqual([]);
   });
 
   it('combines price_review and modern_jawa', () => {
-    expect(assessItem(item({ priceVat: 20_000, productName: 'Kompletní výfuk Jawa 300 CL' })).flags).toEqual([
-      'price_review',
-      'modern_jawa',
-    ]);
+    expect(
+      assessItem(item({ priceVat: 20_000, productName: 'Kompletní výfuk Jawa 300 CL' })).flags,
+    ).toEqual(['price_review', 'modern_jawa']);
+  });
+});
+
+describe('assessItem - merch a Simson', () => {
+  it.each([
+    'Tričko s potiskem Born To Ride Pionýr Velikost: XL',
+    'Mikina JAWA Fratišek Janeček Velikost: L',
+    'JAWA 350 Pérák, mléčná čokoláda 100 g',
+    'Plakát motoru BABETTA 210 (84 x 60cm)',
+    'Hrnek s potiskem Born To Ride Pionýr',
+    'Klíčenka JAWA bílo - červená',
+    'Přívěsek na klíče Babetta',
+  ])('excludes merch "%s"', (productName) => {
+    expect(assessItem(item({ productName })).exclusion).toBe('merch');
+  });
+
+  it.each([
+    'Katalog ND BABETTA 207  *M',
+    'příručka JAWA 350 - 634/5, 6, 8',
+    'Nálepka BABETTA 210/220',
+    'Kniha Jawa 90',
+    'Klíč brzdy JAWA 50 - 550',
+  ])('keeps literature, stickers and parts "%s"', (productName) => {
+    expect(assessItem(item({ productName })).exclusion).toBeNull();
+  });
+
+  it.each([
+    'Víko schránky pravé SIMSON S51 Elektronik - zelené',
+    'Řetězové kolečko 17z. SIMSON',
+    'Zadní stupačka úpl. SIMSON',
+  ])('excludes Simson without our brand "%s"', (productName) => {
+    expect(assessItem(item({ productName })).exclusion).toBe('simson_only');
+  });
+
+  it.each([
+    'Matice osy kola JAWA 50, BABETTA, SIMSON  (19klíč)',
+    'Řetěz BABETTA 207, SIMSON',
+    'Zrcátko M8 SIMSON, Stella',
+    'Kolo Simson Pérák',
+  ])('keeps Simson mentioned with our brand or nickname "%s"', (productName) => {
+    expect(assessItem(item({ productName })).exclusion).toBeNull();
   });
 });

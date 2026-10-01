@@ -124,3 +124,51 @@ motocyklů, automobilů", 1 jawa-korda 99 900 Kč, 1 motojelinek 52 995 Kč) a 2
 
 **MPN u motojelinku obsahuje kódy MVdily** (např. `mvdily0344`) - potenciální
 párovací klíč, až bude MVdily zdroj dat (Tier B' / MPN ↔ kód MVdily).
+
+## 2026-09-30 – Fáze 3: kanonické modely a parser (dry-run)
+
+**Proč ručně:** vazby odvozené z toho, co se v názvech potkává, vedou k chybám
+(sdílené díly ≠ stejný model, analýza zmínek run #7). Modely se seedují ručně
+(`src/lib/models/seed.ts`, zdroj pravdy → migrace `013_seed_models.sql` se
+generuje `npx tsx scripts/generate-models-seed.ts`, test hlídá shodu) a parser
+(`src/lib/models/parseModels.ts`) na ně jen mapuje.
+
+**Schéma (migrace `012`, `014`):** `models` = `id`(=slug), `slug`, `brand`, `name`,
+`family` (řada, uvnitř které se rozvíjejí rozsahy), `displacement`,
+`type_numbers`, `aliases`, `needs_verification`, `note` (+ `years`);
+`type_code`/`popular_name` zrušeny. `part_models` + `match_level`
+(`type|nickname|displacement|brand`), `source` (`name|description`),
+`matched_text`. Obě tabulky byly při návrhu prázdné, migrace to hlídá.
+Migrace 012/013 zatím **nejsou aplikované** na DB (ověřeno v transakci s
+rollbackem).
+
+**Seed (finální, 57 modelů):** ověřená typová čísla (Wikipedie, veteranportal,
+jawa-50.cz, cezetmania), `needs_verification=false` u všech. Typ může sdílet víc
+modelů (551 = obě Jawetty, 552 = tři Stadiony), ČZ 125/150 A/B/T/C mají typ
+označený písmenem (`typeNumbers=['B']`), Jawa 90 je Trail (30, 36) a Roadster
+(31, 37), Panelka má tři modely (559, 592, 360) a „354/06“ vede na
+`kyvacka-350` i `panelka-350-360`. Bez seedu zůstávají Simson, předválečné ČZ,
+ČZ 500, motokros 968/980 a „350 OHC“ (moderní Jawa, přidáno do flagu
+`modern_jawa` v `itemQuality.ts`; už uložené řádky se nepřeflagují).
+Čezeta + objem bez typu 501/502 = jen brand ČZ, ne skútr.
+
+**Parser:** čísla typů/objemů se berou jen hned za značkou/přezdívkou (včetně
+slepených `jawa350`, `babetta134`); rozsahy (`550-555`, `20-23`, `634 - 640`)
+se rozvíjejí jen přes typy existující v seedu ve stejné řadě; dvouciferné typy
+mimo Jawa 50 (Pérák 11/12) jen s „typ“; desetinná čísla (`58,25`) nejsou typy;
+holé „551/552/90/11“ bez značky se ignorují; objem těsně před přezdívkou
+je závazný („350 OHC“ není ohc-500); priorita `type > nickname > displacement > brand`, `displacement`/`brand` **nemají
+vazbu na konkrétní model** (parser vrací jen `generic` zásahy). Motojelinek čte
+modely za posledním `" - "`.
+
+**Dry-run:** `docs/reports/models-dry-run-2026-09-30.md` (nic se nezapsalo do
+`part_models`). Zjištění: `part_models` je klíčované na `parts`, pending
+`shop_products` nemají `part_id`, a `displacement`/`brand` zásahy nemají
+`model_id` – před zápisem je potřeba rozhodnout, co a kam se uloží.
+
+**2026-10-01 – kvalita položek:** nová pravidla `merch` (trička, mikiny, čokolády,
+plakáty, hrnky, klíčenky, přívěsky) a `simson_only` (Simson v názvu bez naší
+značky/přezdívky) v `itemQuality.ts`; literatura (katalog, příručka) a nálepky
+zůstávají. Pending → ignored se dělá až po schválení seznamu
+(`scripts/preview-quality-ignored.ts`, `--apply`), seznam je v
+`docs/reports/quality-ignored-preview-2026-10-01.md`.

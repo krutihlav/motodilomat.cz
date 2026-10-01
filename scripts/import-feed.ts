@@ -73,6 +73,8 @@ function emptyExcluded(): Record<ExclusionReason, number> {
     excluded_category: 0,
     vehicle_name: 0,
     brand_name: 0,
+    merch: 0,
+    simson_only: 0,
   };
 }
 
@@ -660,7 +662,7 @@ export async function runDryRun(
 function printQualityCounts(excluded: Record<ExclusionReason, number>, flagged: number): void {
   const total = EXCLUSION_REASONS.reduce((sum, reason) => sum + excluded[reason], 0);
   console.log(
-    `Vyřazeno pravidly:       ${total} (cena<=0: ${excluded.price_invalid}, cena>30000: ${excluded.price_over_limit}, kategorie: ${excluded.excluded_category}, vozidlo/motor: ${excluded.vehicle_name}, název=značka: ${excluded.brand_name})`,
+    `Vyřazeno pravidly:       ${total} (cena<=0: ${excluded.price_invalid}, cena>30000: ${excluded.price_over_limit}, kategorie: ${excluded.excluded_category}, vozidlo/motor: ${excluded.vehicle_name}, název=značka: ${excluded.brand_name}, merch: ${excluded.merch}, Simson: ${excluded.simson_only})`,
   );
   console.log(`Flagováno k kontrole:    ${flagged}`);
 }
