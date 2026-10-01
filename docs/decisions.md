@@ -133,7 +133,7 @@ párovací klíč, až bude MVdily zdroj dat (Tier B' / MPN ↔ kód MVdily).
 generuje `npx tsx scripts/generate-models-seed.ts`, test hlídá shodu) a parser
 (`src/lib/models/parseModels.ts`) na ně jen mapuje.
 
-**Schéma (migrace `012`):** `models` = `id`(=slug), `slug`, `brand`, `name`,
+**Schéma (migrace `012`, `014`):** `models` = `id`(=slug), `slug`, `brand`, `name`,
 `family` (řada, uvnitř které se rozvíjejí rozsahy), `displacement`,
 `type_numbers`, `aliases`, `needs_verification`, `note` (+ `years`);
 `type_code`/`popular_name` zrušeny. `part_models` + `match_level`
@@ -165,3 +165,10 @@ modely za posledním `" - "`.
 `part_models`). Zjištění: `part_models` je klíčované na `parts`, pending
 `shop_products` nemají `part_id`, a `displacement`/`brand` zásahy nemají
 `model_id` – před zápisem je potřeba rozhodnout, co a kam se uloží.
+
+**2026-10-01 – kvalita položek:** nová pravidla `merch` (trička, mikiny, čokolády,
+plakáty, hrnky, klíčenky, přívěsky) a `simson_only` (Simson v názvu bez naší
+značky/přezdívky) v `itemQuality.ts`; literatura (katalog, příručka) a nálepky
+zůstávají. Pending → ignored se dělá až po schválení seznamu
+(`scripts/preview-quality-ignored.ts`, `--apply`), seznam je v
+`docs/reports/quality-ignored-preview-2026-10-01.md`.
