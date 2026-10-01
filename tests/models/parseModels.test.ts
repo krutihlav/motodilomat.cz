@@ -76,15 +76,10 @@ describe('parseModels - reálné názvy z DB', () => {
     [
       'Elektroinstalace - JAWA 90, Cross, Roadster, Trail',
       'motojelinek',
-      ['jawa-90-roadster', 'jawa-90-trail'],
+      ['jawa-90-cross-trail', 'jawa-90-roadster'],
       'nickname',
     ],
-    [
-      'Bowden PLYN - JAWA 90 Cross',
-      'motojelinek',
-      ['jawa-90-roadster', 'jawa-90-trail'],
-      'nickname',
-    ],
+    ['Bowden PLYN - JAWA 90 Cross', 'motojelinek', ['jawa-90-cross-trail'], 'nickname'],
     ['Koleno výfuku (CZ) - JAWA 90 Roadster', 'motojelinek', ['jawa-90-roadster'], 'nickname'],
     ['Kabel Jawa 90 typ 31', 'x', ['jawa-90-roadster'], 'type'],
     // Pérák, OHC, Kývačka
@@ -226,7 +221,7 @@ describe('parseModels - reálné názvy z DB', () => {
     [
       'Elektroinstalace (VAPE) - Babetta 207 228 206',
       'motojelinek',
-      ['babetta-207', 'babetta-228'],
+      ['babetta-206', 'babetta-207', 'babetta-228'],
       'type',
     ],
     ['Řetěz Babetta134 zadní', 'x', ['babetta-134'], 'type'],
@@ -341,10 +336,10 @@ describe('parseModels - pravidla', () => {
   });
 
   it('nerozřešené tokeny: neseedované ČZ typy a čísla', () => {
-    const result = parseModels('Hřídel ČZ 125, 150 - 351, 500');
-    expect(result.unresolved.map((u) => u.token)).toEqual(['351', '500']);
-    expect(parseModels('Teleskop Jawa Babetta 206, 207').unresolved).toEqual([
-      { kind: 'number', brand: 'Jawa/Babetta', token: '206' },
+    const result = parseModels('Hřídel ČZ 125, 150 - 353a, 500');
+    expect(result.unresolved.map((u) => u.token)).toEqual(['500']);
+    expect(parseModels('Teleskop Jawa Babetta 209, 207').unresolved).toEqual([
+      { kind: 'number', brand: 'Jawa/Babetta', token: '209' },
     ]);
   });
 
@@ -375,5 +370,66 @@ describe('parseModels - závorky', () => {
       'pionyr-555',
     ]);
     expect(slugs('(náhrada Jawa 50 - 23 Mustang)', 'motomax')).toEqual(['mustang-23']);
+  });
+});
+
+describe('parseModels - opravy 2026-10-01', () => {
+  it.each([
+    // Pérák 11 / 12 / 18
+    ['přední úplný JAWA Pérák 11, 18 Komunista', 'motomax', ['perak-250', 'perak-350'], 'type'],
+    ['s nýty  ,,JAWA PÉRÁK typ 11, 18 Komunista', 'motomax', ['perak-250', 'perak-350'], 'type'],
+    ['hřídel Jawa 250/11 Pérák', 'x', ['perak-250'], 'type'],
+    ['MOTORU JAWA 350/12 Ogar *M', 'motomax', ['perak-350'], 'type'],
+    ['Kryt Jawa 350/18', 'x', ['perak-350'], 'type'],
+    ['Písty Jawa 350 OGAR, 59,00mm', 'motomax', ['perak-350'], 'nickname'],
+    ['Řetěz Ogar 59', 'x', [], null],
+    // typ těsně před přezdívkou zužuje
+    ['štítek Jawa 50 typ 20 Pionýr leptaný', 'jawa-korda', ['pionyr-20'], 'type'],
+    ['štítek Jawa 50 typ 05 Pionýr leptaný', 'jawa-korda', ['pionyr-05'], 'type'],
+    ['Kryt JAWA 353 Kývačka', 'x', ['kyvacka-250'], 'type'],
+    ['štítek Jawa 350 typ 362 Californian , leptaný', 'jawa-korda', ['californian-362'], 'type'],
+    ['Šrouby motoru Jawa 250 typ 559  Panelka', 'motokramek', ['panelka-250-559'], 'type'],
+    // (základní Babetta) a Californian s typy
+    ['Tryska M6 x 1 - 63 *JIKOV karb. (základní Babetta)', 'motomax', [], 'brand'],
+    [
+      'světla Jawa ČZ Californian 634 477 Pav dovoz',
+      'jawa-korda',
+      ['californian-362', 'cz-175-477', 'jawa-350-634', 'sport-250-590', 'sport-350-361'],
+      'type',
+    ],
+    // Bizon, 632, rozsahy
+    ['Typový štítek Jawa 350 633/02 Bizon', 'jawa-korda', ['jawa-350-633'], 'type'],
+    ['Plakát Jawa 350 Bizon', 'motomax', ['jawa-350-633'], 'nickname'],
+    ['Karburátor Jawa Bizon', 'x', ['jawa-250-623', 'jawa-350-633'], 'nickname'],
+    ['Karburátor Jawa 350/632, 634 - D26', 'javarna', ['jawa-350-632', 'jawa-350-634'], 'type'],
+    [
+      'Tlumič Jawa 632-640',
+      'x',
+      ['jawa-350-632', 'jawa-350-634', 'jawa-350-638', 'jawa-350-639', 'jawa-350-640'],
+      'type',
+    ],
+    // Jawa-ČZ 351/352, Jawa 90, Pařez, ČZ 180, Babetta 206/215
+    [
+      'cívka ČZ 125, 150 - JAWA-ČZ 351, 352',
+      'motomax',
+      ['jawa-cz-125-351', 'jawa-cz-150-352'],
+      'type',
+    ],
+    ['cívka JAWA-ČZ 125/150 351/352', 'jawa-korda', ['jawa-cz-125-351', 'jawa-cz-150-352'], 'type'],
+    ['Kabel Jawa 90 Cross', 'x', ['jawa-90-cross-trail'], 'nickname'],
+    [
+      'Kabel - JAWA 90, Cross, Roadster, Trail',
+      'motojelinek',
+      ['jawa-90-cross-trail', 'jawa-90-roadster'],
+      'nickname',
+    ],
+    ['Kabel Jawa 90 typ 36', 'x', ['jawa-90-cross-trail'], 'type'],
+    ['Kabel Cross', 'x', [], null],
+    ['Sedlo pařez', 'x', ['pionyr-550', 'pionyr-555'], 'nickname'],
+    ['příručka ČZ 125, 180 - 488.3, 487.3', 'motomax', ['cz-125-488', 'cz-175-487'], 'type'],
+    ['teleskop Babetta 206, 215, 207', 'x', ['babetta-206', 'babetta-207', 'babetta-215'], 'type'],
+  ] as [string, string, string[], string | null][])('%s', (name, shop, expected, expectedLevel) => {
+    expect(slugs(name, shop)).toEqual(expected);
+    expect(level(name, shop)).toBe(expectedLevel);
   });
 });

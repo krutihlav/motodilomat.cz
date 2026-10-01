@@ -4,10 +4,10 @@ import { CANONICAL_MODELS } from '../../src/lib/models/seed';
 const find = (slug: string) => CANONICAL_MODELS.find((m) => m.slug === slug)!;
 
 describe('CANONICAL_MODELS', () => {
-  it('má unikátní slugy a 57 modelů ze zadání', () => {
+  it('má unikátní slugy a 63 modelů ze zadání', () => {
     const slugs = CANONICAL_MODELS.map((m) => m.slug);
     expect(new Set(slugs).size).toBe(slugs.length);
-    expect(slugs).toHaveLength(57);
+    expect(slugs).toHaveLength(63);
   });
 
   it('neseeduje Simson, předválečné ČZ, ČZ 500 ani motokros 968/980', () => {
@@ -30,16 +30,20 @@ describe('CANONICAL_MODELS', () => {
 
   it('ověřená typová čísla', () => {
     expect(find('perak-250').typeNumbers).toEqual(['11']);
-    expect(find('perak-350').typeNumbers).toEqual(['12']);
+    expect(find('perak-350').typeNumbers).toEqual(['12', '18']);
     expect(find('ohc-500').typeNumbers).toEqual(['15']);
     expect(find('kyvacka-250').typeNumbers).toEqual(['353']);
     expect(find('kyvacka-350').typeNumbers).toEqual(['354']);
     expect(find('panelka-250-559').typeNumbers).toEqual(['559']);
     expect(find('panelka-250-592').typeNumbers).toEqual(['592']);
     expect(find('panelka-350-360').typeNumbers).toEqual(['360']);
-    expect(find('jawa-90-trail').typeNumbers).toEqual(['30', '36']);
+    expect(find('jawa-90-cross-trail').typeNumbers).toEqual(['30', '36']);
     expect(find('jawa-90-roadster').typeNumbers).toEqual(['31', '37']);
     expect(find('babetta-134').aliases).toEqual(['stella', 'star', 'star 134']);
-    expect(CANONICAL_MODELS.every((m) => !m.needsVerification)).toBe(true);
+    expect(CANONICAL_MODELS.filter((m) => m.needsVerification).map((m) => m.slug)).toEqual([
+      'jawa-90-cross-trail',
+      'jawa-90-roadster',
+      'babetta-215',
+    ]);
   });
 });

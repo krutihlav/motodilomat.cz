@@ -110,9 +110,26 @@ const EXTRA_TYPE_COMBOS = [{ first: '354', second: '06', slugs: ['panelka-350-36
 const UNRESOLVED_NICKNAMES: { word: string; brand?: string }[] = [
   { word: 'calif' },
   { word: 'libenak' },
-  { word: 'ogar' },
-  { word: 'bizon' },
 ];
+
+/** Aliasy platné jen v kontextu značky: "Ogar" jen s Jawou. */
+const CONTEXT_ALIASES: Record<string, string> = { ogar: 'Jawa' };
+
+/** Typy těchto aliasů se nezahrnují do rozsahů (Bizon 623/633: "632-640" je bez nich). */
+const NO_RANGE_ALIAS = 'bizon';
+
+/** Slova v závorce, která značí původ, ne model. */
+const ORIGIN_WORDS = new Set([
+  'twn',
+  'tw',
+  'tur',
+  'ind',
+  'it',
+  'sk',
+  'original',
+  'org',
+  'originál',
+]);
 
 const ALLOWED_BETWEEN_NUMBERS = /^[\s,/\-.]*$/;
 
@@ -298,8 +315,8 @@ function markNoiseParens(tokens: Token[]): Token[] {
   }
   const noise = new Set<number>();
   for (const [id, group] of groups) {
-    const only = group.every((t) => t.kind === 'BRAND' || t.kind === 'WORD');
-    if (only && group.length <= 3 && group.some((t) => t.kind === 'BRAND')) noise.add(id);
+    const only = group.every((t) => t.kind === 'BRAND' || ORIGIN_WORDS.has(t.text));
+    if (only && group.some((t) => t.kind === 'BRAND')) noise.add(id);
   }
   return tokens.map((t) => ({ ...t, inParen: t.paren !== 0 && noise.has(t.paren) }));
 }
@@ -407,6 +424,8 @@ type NickMention = {
   text: string;
   scopeD: Set<number>;
   adjD: Set<number>;
+  /** typy z čísel těsně před přezdívkou - zužují ji ("350 typ 559 Panelka") */
+  typeNarrow: Set<string>;
   suppressed: boolean;
   /** index v seznamu tokenů následujícího NICK tokenu přes samé mezery */
   nextNickKey: string | null;
@@ -445,7 +464,7 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
   const licensed = new Set<number>();
   let lastNick: NickMention | null = null;
   /** poslední skupina čísel (kvůli "350 OHC", "175/356 Kývačka") */
-  let lastGroup: { endIdx: number; displacements: Set<number> } | null = null;
+  let lastGroup: { endIdx: number; displacements: Set<number>; types: Set<string> } | null = null;
 
   for (let i = 0; i < tokens.length; i += 1) {
     const tok = tokens[i];
@@ -473,6 +492,16 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
       continue;
     }
 
+    if (
+      tok.kind === 'NICK' &&
+      CONTEXT_ALIASES[tok.key!] &&
+      !ctx?.brands.has(CONTEXT_ALIASES[tok.key!])
+    ) {
+      ctx = null;
+      lastNick = null;
+      continue;
+    }
+
     if (tok.kind === 'NICK') {
       pendingTyp = false;
       const nickModels = index.aliasToModels.get(tok.key!)!;
@@ -490,6 +519,7 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
         text: textOf(tok.start, tok.end),
         scopeD: new Set(ctx.scopeD),
         adjD: new Set(),
+        typeNarrow: new Set(),
         suppressed: false,
         nextNickKey: null,
       };
@@ -511,6 +541,7 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
       // Skupina čísel hned před přezdívkou: objem v ní musí přezdívce sedět.
       if (lastGroup && lastGroup.endIdx === i - 1 && /^\s+$/.test(tok.sep)) {
         for (const d of lastGroup.displacements) mention.adjD.add(d);
+        for (const t of lastGroup.types) mention.typeNarrow.add(t);
       }
       // Specifičtější alias hned za obecným ("Stadion S22") obecný potlačí.
       if (lastNick && /^\s+$/.test(tok.sep) && lastNick.end <= tok.start) {
@@ -596,6 +627,9 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
 
     const span = textOf(ctx.startOffset, tokens[endTok].end);
     const firstSepWhitespace = /^\s+$/.test(tokens[items[0].idx].sep);
+    const groupAfterPerak =
+      lastNick?.key === 'perak' && ctx.lastKind === 'NICK' && firstSepWhitespace;
+    const groupTypes = new Set<string>();
     const resolvedAsType: boolean[] = [];
     const groupDisplacements = new Set<number>();
     // ČZ 125/150 A/B/T/C: písmena patří k objemům od posledního bloku písmen.
@@ -622,7 +656,10 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
       const prevItem = items[k - 1];
       // Rozsah "638-640": bez mezer kolem pomlčky, oba konce typy stejné řady.
       const isRangeEnd =
-        prevItem !== undefined && /^\s*-\s*$/.test(tokenObj.sep) && item.idx === prevItem.idx + 1;
+        prevItem !== undefined &&
+        prevItem.text !== '180' && // 180 = jen pozdější provedení typu 487, ne začátek rozsahu
+        /^\s*-\s*$/.test(tokenObj.sep) &&
+        item.idx === prevItem.idx + 1;
       if (isRangeEnd) {
         const from = typeModels(prevItem.text)[0];
         const to = typeModels(item.text)[0];
@@ -630,7 +667,11 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
         const hi = Number(item.text);
         if (from && to && from.family === to.family && lo < hi) {
           for (const model of models) {
-            if (model.family !== from.family) continue;
+            if (
+              model.family !== from.family ||
+              model.aliases.some((a) => foldAlias(a) === NO_RANGE_ALIAS)
+            )
+              continue;
             for (const type of model.typeNumbers) {
               const value = Number(type);
               if (value > lo && value < hi) {
@@ -643,11 +684,21 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
       const hitModels = typeModels(item.text);
       // Dvouciferné typy mimo řadu Jawa 50 (Pérák 11/12, Jawa 90) jen s "typ" -
       // jinak by "Pérák 11, 18" byly rozměry.
+      // Výjimka: typy Péráku (11, 12, 18) hned za "pérák" a ve tvaru objem/typ (250/11).
+      const prevItem2 = items[k - 1];
+      const perakOk =
+        hitModels.every((m) => m.slug.startsWith('perak-')) &&
+        ((lastNick?.key === 'perak' && ctx.lastKind === 'NICK' && k === 0 && firstSepWhitespace) ||
+          (groupAfterPerak && k > 0) ||
+          (prevItem2 !== undefined &&
+            tokenObj.sep === '/' &&
+            isDisplacement(prevItem2.text, brands) !== null));
       const weak =
         hitModels.length > 0 &&
         item.text.length <= 2 &&
         hitModels.every((m) => m.family !== 'Jawa 50') &&
-        !item.typ;
+        !item.typ &&
+        !perakOk;
       if (weak) {
         resolvedAsType.push(false);
         continue;
@@ -655,6 +706,7 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
       if (hitModels.length > 0) {
         for (const model of hitModels) {
           typeHits.set(model.slug, { slug: model.slug, level: 'type', matchedText: span });
+          groupTypes.add(model.slug);
         }
         const follow = tokens[item.idx + 1];
         for (const combo of EXTRA_TYPE_COMBOS) {
@@ -705,11 +757,22 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
     }
 
     flushLetters(items.length);
-    lastGroup = { endIdx: endTok, displacements: groupDisplacements };
+    lastGroup = { endIdx: endTok, displacements: groupDisplacements, types: groupTypes };
 
     // "Pionýr 05, 20, 21" - čísla hned za přezdívkou ji upřesňují, přezdívka sama se neexpanduje.
-    if (lastNick && ctx.lastKind === 'NICK' && firstSepWhitespace && resolvedAsType.some(Boolean)) {
-      lastNick.suppressed = true;
+    if (lastNick && ctx.lastKind === 'NICK' && firstSepWhitespace) {
+      const nickSlugs = new Set(index.aliasToModels.get(lastNick.key)!.map((m) => m.slug));
+      const familyOf = (slug: string) => models.find((m) => m.slug === slug)?.family;
+      const nickAllJawa50 = [...nickSlugs].every((slug) => familyOf(slug) === 'Jawa 50');
+      const typesAllJawa50 =
+        groupTypes.size > 0 && [...groupTypes].every((slug) => familyOf(slug) === 'Jawa 50');
+      // "Pionýr 23 Mustang": čísla v rámci řady Jawa 50 přezdívku upřesňují.
+      if (
+        [...groupTypes].some((slug) => nickSlugs.has(slug)) ||
+        (nickAllJawa50 && typesAllJawa50)
+      ) {
+        lastNick.suppressed = true;
+      }
     }
     ctx.lastKind = 'NUM';
     i = endTok;
@@ -742,6 +805,10 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
     if (wanted.size > 0) {
       const filtered = all.filter((m) => m.displacement === null || wanted.has(m.displacement));
       if (filtered.length > 0 || strict) selected = filtered;
+    }
+    if (mention.typeNarrow.size > 0) {
+      const narrowed = selected.filter((m) => mention.typeNarrow.has(m.slug));
+      if (narrowed.length > 0) selected = narrowed;
     }
     for (const model of selected) {
       if (!nickHits.has(model.slug)) {
