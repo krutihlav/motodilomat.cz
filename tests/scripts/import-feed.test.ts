@@ -186,6 +186,8 @@ describe('runImport - pojistky a pravidla kvality', () => {
       excluded_category: 1,
       vehicle_name: 1,
       brand_name: 0,
+      merch: 0,
+      simson_only: 0,
     });
     expect(summary.flagged).toBe(2);
     expect(calls.flags.get('tank')).toEqual(['price_review']);
