@@ -1,0 +1,24 @@
+name: Pending -> ignored (merch, Simson) - apply
+
+# Jednorázové, ručně spouštěné (po schválení seznamu): přesune pending řádky
+# vyřazené pravidly merch / simson_only na match_status='ignored' a vypíše počty.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsx scripts/preview-quality-ignored.ts --apply | tail -n 25

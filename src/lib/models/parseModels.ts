@@ -810,6 +810,15 @@ export function parseModels(name: string, options: ParseOptions = {}): ParseResu
       const narrowed = selected.filter((m) => mention.typeNarrow.has(m.slug));
       if (narrowed.length > 0) selected = narrowed;
     }
+    // Alias, který má model i ve tvaru s objemem ("kývačka 175"), platí bez objemu
+    // jen pro ostatní modely: samotné "Kývačka" je 250/350, ne 175.
+    if (wanted.size === 0) {
+      const specific = new RegExp(`^${mention.key} \\d+$`);
+      const generalOnly = selected.filter(
+        (m) => !m.aliases.some((a) => specific.test(foldAlias(a))),
+      );
+      if (generalOnly.length > 0) selected = generalOnly;
+    }
     for (const model of selected) {
       if (!nickHits.has(model.slug)) {
         nickHits.set(model.slug, {

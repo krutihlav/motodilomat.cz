@@ -39,7 +39,7 @@ values
   ('velorex-350', 'velorex-350', 'Velorex', 'Velorex 350', 'Velorex', 350, '{}'::text[], array['velorex']::text[], false, 'Tříkolka s motorem Jawa 350.'),
   ('jawa-cz-125-355', 'jawa-cz-125-355', 'Jawa', 'Jawa-ČZ 125 typ 355', 'Jawa-ČZ', 125, array['355']::text[], '{}'::text[], false, null),
   ('jawa-cz-125-351', 'jawa-cz-125-351', 'Jawa', 'Jawa-ČZ 125 typ 351', 'Jawa-ČZ', 125, array['351']::text[], '{}'::text[], false, null),
-  ('jawa-cz-175-356', 'jawa-cz-175-356', 'Jawa', 'Jawa-ČZ 175 typ 356', 'Jawa-ČZ', 175, array['356']::text[], array['kývačka 175', 'malá kývačka']::text[], false, null),
+  ('jawa-cz-175-356', 'jawa-cz-175-356', 'Jawa', 'Jawa-ČZ 175 typ 356', 'Jawa-ČZ', 175, array['356']::text[], array['kývačka', 'kývačka 175', 'malá kývačka']::text[], false, 'Alias „kývačka“ platí jen s objemem (175 ve výčtu objemů); samotné „Kývačka“ vede na 250 a 350.'),
   ('jawa-cz-150-352', 'jawa-cz-150-352', 'Jawa', 'Jawa-ČZ 150 typ 352', 'Jawa-ČZ', 150, array['352']::text[], '{}'::text[], false, null),
   ('cz-125-a', 'cz-125-a', 'ČZ', 'ČZ 125 A', 'ČZ', 125, array['A']::text[], '{}'::text[], false, 'Typ je označen písmenem.'),
   ('cz-125-b', 'cz-125-b', 'ČZ', 'ČZ 125 B', 'ČZ', 125, array['B']::text[], '{}'::text[], false, 'Typ je označen písmenem.'),

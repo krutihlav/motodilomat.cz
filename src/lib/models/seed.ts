@@ -1,6 +1,6 @@
 /**
  * Kanonické modely (generace + objem, ne jen objem), seedované ručně -
- * FINÁLNÍ seznam (rev. 2026-10-01) s ověřenými typovými čísly (Wikipedie, veteranportal,
+ * FINÁLNÍ seznam s ověřenými typovými čísly (Wikipedie, veteranportal,
  * jawa-50.cz, cezetmania). Vazby odvozené z toho, co se v názvech potkává,
  * vedly k chybám (sdílené díly != stejný model), proto parser (parseModels.ts)
  * na tyto modely jen mapuje. Zdroj pravdy pro migraci 013_seed_models.sql
@@ -407,9 +407,9 @@ export const CANONICAL_MODELS: readonly CanonicalModel[] = [
     family: 'Jawa-ČZ',
     displacement: 175,
     typeNumbers: ['356'],
-    aliases: ['kývačka 175', 'malá kývačka'],
+    aliases: ['kývačka', 'kývačka 175', 'malá kývačka'],
     needsVerification: false,
-    note: null,
+    note: 'Alias „kývačka“ platí jen s objemem (175 ve výčtu objemů); samotné „Kývačka“ vede na 250 a 350.',
   },
   {
     slug: 'jawa-cz-150-352',

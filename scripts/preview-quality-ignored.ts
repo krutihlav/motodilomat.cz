@@ -71,7 +71,34 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+async function printCounts() {
+  const { createServiceRoleClient } = await import('../src/lib/supabase/server');
+  const client = createServiceRoleClient();
+  const counts: Record<string, Record<string, number>> = {};
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await client
+      .from('shop_products')
+      .select('shop_id, match_status')
+      .order('id')
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    for (const row of data ?? []) {
+      const shop = row.shop_id as string;
+      const status = (row.match_status as string) ?? 'null';
+      counts[shop] ??= {};
+      counts[shop][status] = (counts[shop][status] ?? 0) + 1;
+    }
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+  console.log('\nPočty match_status po shopech:');
+  for (const shop of Object.keys(counts).sort()) {
+    console.log(`  ${shop}: ${JSON.stringify(counts[shop])}`);
+  }
+}
+
+main()
+  .then(printCounts)
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });

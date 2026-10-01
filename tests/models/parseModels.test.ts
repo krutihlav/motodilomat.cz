@@ -433,3 +433,27 @@ describe('parseModels - opravy 2026-10-01', () => {
     expect(level(name, shop)).toBe(expectedLevel);
   });
 });
+
+describe('parseModels - Kývačka ve výčtu objemů', () => {
+  it('Karburátor Jawa-ČZ 175, 250, 350 Kyvacka vede na 175, 250 i 350', () => {
+    const result = slugs('Karburátor Jawa-ČZ 175, 250, 350 Kyvacka - D26 se sytičem', 'javarna');
+    expect(result).toEqual(
+      expect.arrayContaining(['jawa-cz-175-356', 'kyvacka-250', 'kyvacka-350']),
+    );
+    expect(result).not.toContain('velorex-350');
+  });
+
+  it('s Velorexem ve výčtu přibude velorex-350', () => {
+    const result = slugs(
+      'Karburátor Jawa-ČZ 175, 250, 350 Kyvačka, Panelka a Velorex - D26 se sytičem',
+      'javarna',
+    );
+    expect(result).toEqual(
+      expect.arrayContaining(['jawa-cz-175-356', 'kyvacka-250', 'kyvacka-350', 'velorex-350']),
+    );
+  });
+
+  it('samotné Kývačka bez objemu je jen 250 a 350', () => {
+    expect(slugs('Kryt klaksonu - Kývačka')).toEqual(['kyvacka-250', 'kyvacka-350']);
+  });
+});
