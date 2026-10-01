@@ -1,10 +1,11 @@
--- Fáze 3: kanonické modely (generace + objem, ne jen objem) a úroveň shody
--- u vazeb díl <-> model. Tabulky models i part_models jsou v okamžiku migrace
--- prázdné (ověřeno 2026-09-30), proto jde měnit sloupce bez převodu dat.
+-- Fáze 3: kanonické modely (generace + objem, ne jen objem). Tabulka models
+-- je v okamžiku migrace prázdná (ověřeno 2026-09-30), proto jde měnit sloupce
+-- bez převodu dat. part_models se NEMĚNÍ - je pro kanonické díly; vazby nabídek
+-- na modely jsou v shop_product_models (migrace 014).
 do $$
 begin
-  if exists (select 1 from models) or exists (select 1 from part_models) then
-    raise exception 'models/part_models nejsou prázdné - migraci 012 je potřeba upravit o převod dat';
+  if exists (select 1 from models) then
+    raise exception 'models není prázdná - migraci 012 je potřeba upravit o převod dat';
   end if;
 end $$;
 
@@ -23,15 +24,3 @@ comment on column models.id is 'Shodné se slug (např. ''jawa-350-634'').';
 comment on column models.family is 'Řada, uvnitř které se rozvíjejí rozsahy typů (550-555, 638-640).';
 comment on column models.type_numbers is 'Jen ověřená typová čísla; neověřená jsou v note.';
 comment on column models.aliases is 'Přezdívky a zkratky (pařez, pérák, kýv.); parser je porovnává bez diakritiky a velikosti písmen.';
-
--- part_models: úroveň shody a odkud vazba pochází.
-alter table part_models
-  add column if not exists match_level text not null
-    constraint part_models_match_level_check
-    check (match_level in ('type', 'nickname', 'displacement', 'brand')),
-  add column if not exists source text not null default 'name'
-    constraint part_models_source_check
-    check (source in ('name', 'description')),
-  add column if not exists matched_text text;
-
-create index if not exists part_models_model_id_idx on part_models (model_id);
