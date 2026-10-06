@@ -1,0 +1,36 @@
+name: Dry-run rozkladu názvů dílů (read-only)
+
+# Jen čte shop_products (match_status <> 'ignored'). Nic nezapisuje.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Rozklad názvů (pokrytí, top partType, vzorky, prázdné partType)
+        run: |
+          npx tsx scripts/dry-run-parts.ts --out parts-report.md --json parts-report.json
+          head -c 6000 parts-report.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parts-dry-run-report
+          path: |
+            parts-report.md
+            parts-report.json
