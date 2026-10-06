@@ -1,0 +1,55 @@
+name: Zápis vazeb produkt-model (shop_product_models)
+
+# Jen ruční spuštění. Dvoufázově:
+#  1) confirm_write=false (výchozí) -> jen dry-run se souhrnem, nic se nezapíše,
+#  2) po kontrole souhrnu znovu s confirm_write=true -> job write zapíše vazby.
+# Skript je idempotentní, při pádu stačí pustit znovu.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_write:
+        description: 'Zapsat vazby do DB (až po kontrole souhrnu z dry-runu)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Souhrn (dry-run, bez --write)
+        run: npx tsx scripts/write-product-models.ts
+
+  write:
+    needs: dry-run
+    if: ${{ inputs.confirm_write }}
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Zápis (--write)
+        run: npx tsx scripts/write-product-models.ts --write
