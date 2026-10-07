@@ -26,7 +26,7 @@ jobs:
       - name: Rozklad názvů (pokrytí, top partType, vzorky, prázdné partType)
         run: |
           npx tsx scripts/dry-run-parts.ts --out parts-report.md --json parts-report.json
-          head -c 6000 parts-report.md
+          cat parts-report.md
 
       - uses: actions/upload-artifact@v4
         with:

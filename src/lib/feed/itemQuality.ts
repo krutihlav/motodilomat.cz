@@ -40,6 +40,10 @@ export type ItemAssessment = {
 const MERCH_RE =
   /\b(tricko|tricka|triko|mikina|mikiny|mikinu|cokolad\w*|plakat\w*|hrnek|hrnku|hrnky|klicenk\w*|privesek|privesku|privesky)\b/;
 
+// Dárkové poukazy (Motomax: "Dárkový poukaz v hodnotě 1000 Kč") se ukládají, ale rovnou jako ignored.
+const VOUCHER_RE =
+  /\b(darkov\w*\s+(poukaz|poukazy|poukazka|poukazku|certifikat|karta|karty|kupon)\w*|voucher|gift ?card)\b/;
+
 const SIMSON_RE = /\bsimson\b/;
 
 // Naše značky a přezdívky: relevanční klíčová slova + aliasy kanonických modelů.
@@ -51,6 +55,16 @@ const OUR_BRAND_RES = [
 ]
   .filter((word) => word && !/^typ \d+$/.test(word))
   .map((word) => new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`));
+
+/**
+ * Položky, které se uloží, ale hned označí match_status='ignored' (nejsou díl).
+ * Na rozdíl od ExclusionReason se nezahazují - zůstávají v DB, aby je další import nevracel jako nové.
+ */
+export type AutoIgnoreReason = 'voucher';
+
+export function autoIgnoreReason(productName: string): AutoIgnoreReason | null {
+  return VOUCHER_RE.test(normalize(productName)) ? 'voucher' : null;
+}
 
 /** Obsahuje název naši značku nebo přezdívku modelu? */
 export function hasOurBrand(name: string): boolean {

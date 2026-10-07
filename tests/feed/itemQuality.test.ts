@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assessItem } from '../../src/lib/feed/itemQuality';
+import { assessItem, autoIgnoreReason } from '../../src/lib/feed/itemQuality';
 import type { FeedItem } from '../../src/lib/feed/types';
 
 const item = (overrides: Partial<FeedItem>): FeedItem => ({
@@ -148,5 +148,30 @@ describe('assessItem - merch a Simson', () => {
     'Kolo Simson Pérák',
   ])('keeps Simson mentioned with our brand or nickname "%s"', (productName) => {
     expect(assessItem(item({ productName })).exclusion).toBeNull();
+  });
+});
+
+describe('autoIgnoreReason - dárkové poukazy', () => {
+  it.each([
+    'Dárkový poukaz v hodnotě 1000 Kč',
+    'Dárkový poukaz v hodnotě 500 Kč',
+    'Dárková poukázka Motomax',
+    'Gift card 2000',
+  ])('ignores voucher "%s"', (productName) => {
+    expect(autoIgnoreReason(productName)).toBe('voucher');
+  });
+
+  it.each(['Píst Jawa 350 typ 634', 'Katalog ND BABETTA 207  *M', 'Dárkové balení svíček Jawa'])(
+    'does not ignore "%s"',
+    (productName) => {
+      expect(autoIgnoreReason(productName)).toBeNull();
+    },
+  );
+
+  it('is not an exclusion: assessItem still lets the voucher through (it is stored, then ignored)', () => {
+    expect(
+      assessItem(item({ productName: 'Dárkový poukaz v hodnotě 1000 Kč', priceVat: 1000 }))
+        .exclusion,
+    ).toBeNull();
   });
 });
