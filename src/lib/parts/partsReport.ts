@@ -14,6 +14,9 @@ export type PartsReport = {
   distinctPartTypes: number;
   /** qualityTag -> počty, top `tagLimit` */
   topQualityTags: { tag: string; total: number; byShop: Record<string, number> }[];
+  /** variant.ref / variant.code -> počty (víc hodnot v jedné nabídce se počítá zvlášť), top `tagLimit` */
+  topRefs: { value: string; total: number; byShop: Record<string, number> }[];
+  topCodes: { value: string; total: number; byShop: Record<string, number> }[];
   /** partType, které se liší přesně jedním slovem (záměna nebo přidané/chybějící slovo) */
   nearPairs: NearPair[];
   samples: { shopId: string; name: string; parsed: ParsedOffer }[];
@@ -93,6 +96,8 @@ export const VARIANT_KEYS: (keyof OfferVariant)[] = [
   'teeth',
   'pack',
   'size',
+  'ref',
+  'code',
 ];
 
 export type BuildOptions = {
@@ -121,6 +126,8 @@ export function buildPartsReport(rows: OfferRow[], options: BuildOptions = {}): 
   }
   const types = new Map<string, { total: number; byShop: Record<string, number> }>();
   const tagCounts = new Map<string, { total: number; byShop: Record<string, number> }>();
+  const refCounts = new Map<string, { total: number; byShop: Record<string, number> }>();
+  const codeCounts = new Map<string, { total: number; byShop: Record<string, number> }>();
   const parsedRows: { row: OfferRow; parsed: ParsedOffer }[] = [];
   const empty: OfferRow[] = [];
 
@@ -134,6 +141,17 @@ export function buildPartsReport(rows: OfferRow[], options: BuildOptions = {}): 
     };
     for (const key of VARIANT_KEYS) if (parsed.variant[key] !== null) bump(key);
     if (parsed.qualityTags.length > 0) bump('qualityTags');
+    for (const [value, counts] of [
+      [parsed.variant.ref, refCounts],
+      [parsed.variant.code, codeCounts],
+    ] as const) {
+      for (const item of value?.split(' ') ?? []) {
+        const entry = counts.get(item) ?? { total: 0, byShop: {} };
+        entry.total += 1;
+        entry.byShop[row.shopId] = (entry.byShop[row.shopId] ?? 0) + 1;
+        counts.set(item, entry);
+      }
+    }
     for (const tag of parsed.qualityTags) {
       const entry = tagCounts.get(tag) ?? { total: 0, byShop: {} };
       entry.total += 1;
@@ -160,6 +178,11 @@ export function buildPartsReport(rows: OfferRow[], options: BuildOptions = {}): 
     .map(([tag, v]) => ({ tag, ...v }))
     .sort((a, b) => b.total - a.total || a.tag.localeCompare(b.tag))
     .slice(0, tagLimit);
+  const top = (counts: typeof refCounts) =>
+    [...counts.entries()]
+      .map(([value, v]) => ({ value, ...v }))
+      .sort((a, b) => b.total - a.total || a.value.localeCompare(b.value))
+      .slice(0, tagLimit);
   const nearPairs = findNearPairs(
     new Map([...types.entries()].map(([t, v]) => [t, v.total])),
     pairLimit,
@@ -181,6 +204,8 @@ export function buildPartsReport(rows: OfferRow[], options: BuildOptions = {}): 
     topPartTypes,
     distinctPartTypes: types.size,
     topQualityTags,
+    topRefs: top(refCounts),
+    topCodes: top(codeCounts),
     nearPairs,
     samples,
     emptyPartType: { total: empty.length, items: empty.slice(0, emptyLimit) },
@@ -232,6 +257,22 @@ export function renderPartsReport(report: PartsReport): string {
     out.push(
       `| ${esc(t.tag)} | ${t.total} | ${report.shops.map((s) => t.byShop[s] ?? 0).join(' | ')} |`,
     );
+  }
+
+  for (const [title, items] of [
+    ['variant.ref', report.topRefs],
+    ['variant.code', report.topCodes],
+  ] as const) {
+    out.push('', `## Top ${items.length} ${title}`, '');
+    out.push(
+      `| hodnota | celkem | ${report.shops.join(' | ')} |`,
+      `|---|---:|${report.shops.map(() => '---:').join('|')}|`,
+    );
+    for (const t of items) {
+      out.push(
+        `| ${esc(t.value)} | ${t.total} | ${report.shops.map((s) => t.byShop[s] ?? 0).join(' | ')} |`,
+      );
+    }
   }
 
   out.push('', `## Dvojice partType lišící se jedním slovem (top ${report.nearPairs.length})`, '');

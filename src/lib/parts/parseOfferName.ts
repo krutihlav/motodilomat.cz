@@ -18,6 +18,10 @@ export type OfferVariant = {
   /** "36ks", "sada" (jen za modelem nebo v závorce; "Sada šroubů" je součást partType) */
   pack: string | null;
   size: Size | null;
+  /** Odkaz na značku/výrobce z "*X" (kromě *M): "jikov", "dellorto", "pal", "sim". Víc hodnot oddělených mezerou. */
+  ref: string | null;
+  /** Kódy s číslicí (2926, 2924h, sha1616g, phbg19ds, f-876). Víc hodnot oddělených mezerou. */
+  code: string | null;
 };
 
 export type ParsedOffer = {
@@ -288,14 +292,28 @@ const STEM_ENDINGS = [
 /**
  * Lehký stemming češtiny pro partType: odřízne pádovou příponu / koncovou samohlásku
  * a sjednotí "-ek" -> "-k" (kolena/koleno/kolen -> kolen, paprsek/paprsky -> paprsk).
- * Kmen má vždy aspoň 3 znaky.
+ * Kmen má vždy aspoň 3 znaky. Slova do 4 znaků se pravidlem neřeší, jen výčtem SHORT_FORMS
+ * (pneu zůstane pneu, kryt kryt).
  */
 const ABBREVIATIONS: Record<string, string> = { karb: 'karburator', bow: 'bowden' };
 
+const SHORT_FORMS: Record<string, string> = {
+  osa: 'os',
+  osy: 'os',
+  ose: 'os',
+  osu: 'os',
+  kolo: 'kol',
+  kola: 'kol',
+  kole: 'kol',
+  kolu: 'kol',
+  sady: 'sada',
+  sade: 'sada',
+  sadu: 'sada',
+};
+
 export function stemWord(input: string): string {
   const word = ABBREVIATIONS[input] ?? input;
-  if (/^os[aeuy]$/.test(word)) return 'os';
-  if (word.length <= 3) return word;
+  if (word.length <= 4) return SHORT_FORMS[word] ?? word;
   let stem = word;
   const ending = STEM_ENDINGS.find((e) => stem.endsWith(e) && stem.length - e.length >= 3);
   if (ending) stem = stem.slice(0, -ending.length);
@@ -310,6 +328,10 @@ function take(text: string, re: RegExp): { text: string; matches: RegExpExecArra
   if (matches.length === 0) return { text, matches: [] };
   return { text: text.replace(re, (m) => ' '.repeat(m.length)), matches };
 }
+
+/** Tokeny s číslicí, které nejsou kód dílu: množství s jednotkou, ordinály, kódy modelů, formát papíru. */
+const NOT_A_CODE =
+  /^(?:(?:cena|za)?\d{1,3}(?:\.\d{1,2})?(?:a|m|cm|mm|t|d|l|ml|kg|hr|klic|kus|typ|kont|valec|rychl)|\d{1,3}g|\d+x[a-z]*|\d+\.[a-z]+|a\d|[dl]\d+(?:mm)?|m\d{3}|mz\d+|s(?:11|22|23)|sv\d|bab?-?\d{3}|\d+-[a-z]+)$/;
 
 const NUM = String.raw`\d+(?:[.,]\d+)?`;
 const QUOTE = String.raw`["”″]`;
@@ -333,13 +355,16 @@ function popCommaMarkers(text: string, tags: Set<string>): string {
   });
 }
 
-/** Značka shopu "*X": *M = Motomax, ostatní = výrobce podle prefixu (ne podle slovníku). */
-function popStarMarkers(text: string, tags: Set<string>): string {
+/**
+ * Značka shopu "*X": *M = Motomax (výrobce), ostatní jsou odkaz na značku
+ * ("*JIKOV karb.", "náhrada *SIM", "pro originál *PAL") -> `refs`, ne qualityTags.
+ */
+function popStarMarkers(text: string, tags: Set<string>, refs: Set<string>): string {
   return text.replace(/\*([^\s*,;()/]*)/g, (_, raw: string) => {
     const code = foldText(raw).replace(/[^a-z0-9]/g, '');
     if (code === 'm') tags.add('mfr:motomax');
     else if (code.startsWith('origi')) tags.add('original');
-    else if (code) tags.add(`mfr:${code}`);
+    else if (code) refs.add(code);
     return ' ';
   });
 }
@@ -348,6 +373,7 @@ function popStarMarkers(text: string, tags: Set<string>): string {
 
 export function parseOfferName(name: string, options: ParseOfferOptions = {}): ParsedOffer {
   const tags = new Set<string>();
+  const refs = new Set<string>();
 
   // 1) značka + model pryč (existující parser modelů)
   let original = name;
@@ -366,7 +392,7 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
   }
 
   // 2) značky shopu: "*X", ",,X", "X na konci, -e-
-  original = popStarMarkers(popCommaMarkers(original, tags), tags);
+  original = popStarMarkers(popCommaMarkers(original, tags), tags, refs);
   const grade = /\s"([A-Za-z0-9]{1,3})\s*$/.exec(original);
   if (grade) {
     tags.add(`grade:${grade[1].toLowerCase()}`);
@@ -411,7 +437,7 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
   unit(new RegExp(`${NB}(${NUM})\\s*ah(?![a-z\\d])`, 'g'), 'ah');
   unit(new RegExp(`${NB}(${NUM})\\s*kg(?![a-z\\d])`, 'g'), 'kg');
   unit(new RegExp(`${NB}(${NUM})\\s*ml(?![a-z\\d])`, 'g'), 'ml');
-  unit(new RegExp(`${NB}(${NUM})\\s*l(?![a-z\\d])`, 'g'), 'l');
+  unit(new RegExp(`${NB}(\\d{1,2}(?:[.,]\\d+)?)\\s*l(?![a-z\\d])`, 'g'), 'l');
   unit(new RegExp(`${NB}(${NUM})\\s*mm2(?![a-z\\d])`, 'g'), 'mm2');
 
   // patice žárovek a pojistek: Ba15d, Bay15d, P45t
@@ -477,8 +503,14 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
   text = r.text;
   for (const m of r.matches) dimensions.push(`${normNum(m[1])}mm`);
 
-  // ložiska: 6202 2RS
-  r = take(text, new RegExp(`${NB}\\d{4}(?:\\s*(?:2rs|rs|zz|2z))?(?![a-z\\d])`, 'g'));
+  // ložiska: 6202, 6306, 6202 2RS (jiná čtyřmístná čísla, např. karburátor 2926, jsou kódy)
+  r = take(
+    text,
+    new RegExp(
+      `${NB}(?:6\\d{3}(?:\\s*(?:2rs|rs|zz|2z))?|\\d{4}\\s*(?:2rs|rs|zz|2z))(?![a-z\\d])`,
+      'g',
+    ),
+  );
   text = r.text;
   for (const m of r.matches) dimensions.push(m[0].replace(/\s+/g, '-'));
 
@@ -499,7 +531,18 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
   let color: string | null = null;
   let size: Size | null = null;
 
-  // kódy s číslicí (phbg17bs, yb5l, c3, m134) nejsou slova
+  // kódy s číslicí (2926, 2924h, sha1616g, f-876): písmena+číslice, nebo aspoň čtyři číslice;
+  // bez množství s jednotkou (16A, 85g, 1m), označení modelů a velikostí papíru
+  const codes = new Set<string>();
+  for (const m of text.matchAll(/[a-z0-9]+(?:[-.][a-z0-9]+)*/g)) {
+    const token = m[0];
+    const mixed = /\d/.test(token) && /[a-z]/.test(token);
+    const longNumber = /^\d{4,}$/.test(token);
+    if (!(mixed || longNumber) || NOT_A_CODE.test(token)) continue;
+    codes.add(token);
+  }
+
+  // tokeny s číslicí nejsou slova partType
   const words = [...text.matchAll(/[a-z0-9]+/g)]
     .filter((m) => !/\d/.test(m[0]))
     .map((m) => ({ word: m[0], at: m.index }));
@@ -572,6 +615,8 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
       teeth,
       pack,
       size,
+      ref: refs.size > 0 ? [...refs].sort().join(' ') : null,
+      code: codes.size > 0 ? [...codes].sort().join(' ') : null,
     },
     qualityTags: [...tags].sort(),
   };
