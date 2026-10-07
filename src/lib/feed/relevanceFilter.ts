@@ -37,11 +37,16 @@ const KEYWORD_PATTERNS = RELEVANT_KEYWORDS.map(
   (keyword) => new RegExp(`\\b${keyword}\\b`, 'i'),
 );
 
+/** True, pokud (normalizovaný) text obsahuje některé z RELEVANT_KEYWORDS jako celé slovo. */
+export function matchesRelevantKeywords(text: string): boolean {
+  const haystack = normalize(text);
+  return KEYWORD_PATTERNS.some((pattern) => pattern.test(haystack));
+}
+
 /**
  * Vrací true, pokud název nebo kategorie položky obsahuje některé z
  * RELEVANT_KEYWORDS (case-insensitive, bez ohledu na diakritiku).
  */
 export function isRelevantItem(item: FeedItem): boolean {
-  const haystack = normalize(`${item.productName} ${item.categoryText ?? ''}`);
-  return KEYWORD_PATTERNS.some((pattern) => pattern.test(haystack));
+  return matchesRelevantKeywords(`${item.productName} ${item.categoryText ?? ''}`);
 }
