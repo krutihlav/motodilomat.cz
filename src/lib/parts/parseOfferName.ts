@@ -15,12 +15,12 @@ export type OfferVariant = {
   finish: string | null;
   color: string | null;
   teeth: number | null;
-  /** "36ks", "sada" (jen za modelem nebo v závorce; "Sada šroubů" je součást partType) */
+  /** "36ks", "sada" (jen za modelem nebo v závorce; "Sada šroubů" je součást partType), "complete" (úpl./kompletní) */
   pack: string | null;
   size: Size | null;
-  /** Odkaz na značku/výrobce z "*X" (kromě *M): "jikov", "dellorto", "pal", "sim". Víc hodnot oddělených mezerou. */
+  /** Odkaz na značku (jikov, dellorto, domino, pal, bosch, vape), s prefixem "*" i bez. Víc hodnot oddělených mezerou. */
   ref: string | null;
-  /** Kódy s číslicí (2926, 2924h, sha1616g, phbg19ds, f-876). Víc hodnot oddělených mezerou. */
+  /** Kódy s číslicí bez teček a mezer (2926, 2924h, sha1616g, phbg19ds, f-876). Víc hodnot oddělených mezerou. */
   code: string | null;
 };
 
@@ -129,26 +129,27 @@ const STOPWORDS = new Set([
   'vc',
 ]);
 
-/** Výrobci/značky dílů -> tag mfr:<x> (značka zboží, ne stroje). */
-const MANUFACTURERS = new Set([
+/** Značky, na které nabídka jen odkazuje ("*JIKOV karb.", "pro originál *PAL"): variant.ref, s prefixem i bez. */
+const REF_BRANDS = new Set(['jikov', 'dellorto', 'domino', 'pal', 'bosch', 'vape']);
+
+/** Ostatní známé značky/výrobci dílů, které se píšou i bez prefixu -> tag mfr:<x>. */
+const PLAIN_BRANDS = new Set([
   'zvl',
   'almet',
   'mitroc',
-  'dellorto',
-  'jikov',
   'hiflofiltro',
-  'ram',
   'skf',
-  'ina',
   'koyo',
   'ngk',
-  'bosch',
   'brisk',
   'tesla',
   'ntn',
   'ybn',
   'ckr',
-  'motomax',
+  'elta',
+  'fortune',
+  'mitas',
+  'rubena',
 ]);
 
 const SIDE_LEFT = /^(lev(y|a|e|ou|eho|ych)|levostran\w*)$/;
@@ -170,7 +171,7 @@ const FINISH_WORDS: [RegExp, string][] = [
   [/^nerez/, 'stainless'],
   [/^nikl/, 'nickel'],
   [/^lesten/, 'polished'],
-  [/^lakovan/, 'painted'],
+  [/^(lak|lakovan\w*)$/, 'painted'],
   [/^surov/, 'raw'],
   [/^eloxovan/, 'anodized'],
   [/^cernen/, 'blackened'],
@@ -228,7 +229,11 @@ const TAG_WORDS: [RegExp, string][] = [
   [/^nahrada$/, 'replacement'],
   [/^(repasovan|renovovan|regenerovan)/, 'refurbished'],
   [/^(novy|nova|nove)$/, 'new'],
-  [/^(kompletni|upl\w*)$/, 'complete'],
+  [/^dovoz\w*$/, 'import'],
+  [/^jakost$/, 'quality'],
+  [/^kvalitn\w*$/, 'quality'],
+  [/^top$/, 'top'],
+  [/^standard\w*$/, 'standard'],
   [/^zesilen/, 'reinforced'],
   [/^(cr|cesk[yae]|ceska)$/, 'origin-cz'],
   [/^(sk|slovensk[yae]|slovenska)$/, 'origin-sk'],
@@ -311,7 +316,20 @@ const SHORT_FORMS: Record<string, string> = {
   sadu: 'sada',
 };
 
+/** Synonyma na úrovni kmenů: lanko -> bowden, samolepka -> nálepka, šimerink -> gufero, pístní -> píst, volnoběžný -> volnoběh. */
+const SYNONYM_STEMS: Record<string, string> = {
+  lank: 'bowden',
+  samolepk: 'nalepk',
+  simerink: 'gufer',
+  pistn: 'pist',
+  volnobezn: 'volnobeh',
+};
+
 export function stemWord(input: string): string {
+  return SYNONYM_STEMS[rawStem(input)] ?? rawStem(input);
+}
+
+function rawStem(input: string): string {
   const word = ABBREVIATIONS[input] ?? input;
   if (word.length <= 4) return SHORT_FORMS[word] ?? word;
   let stem = word;
@@ -339,16 +357,22 @@ const NB = String.raw`(?<![a-z\d])`;
 
 const normNum = (s: string) => s.replace(/,/g, '.').replace(/\s+/g, '');
 
-/** Značka za čárkami ",,X": země původu / výrobce -> tag, jinak jen zahodí ",,". */
-function popCommaMarkers(text: string, tags: Set<string>): string {
+/** Značka (z "*X", ",,X" nebo slova): odkaz -> refs, jiná známá značka -> tag mfr:x. */
+function addBrand(code: string, tags: Set<string>, refs: Set<string>): void {
+  if (REF_BRANDS.has(code)) refs.add(code);
+  else tags.add(`mfr:${code}`);
+}
+
+/** Značka za čárkami ",,X": země původu / známá značka -> tag/ref, jinak jen zahodí ",,". */
+function popCommaMarkers(text: string, tags: Set<string>, refs: Set<string>): string {
   return text.replace(/,,([^\s,"„“”]*)/g, (_, raw: string) => {
     const code = foldText(raw).replace(/[^a-z0-9]/g, '');
     if (ORIGIN_CODES[code]) {
       tags.add(ORIGIN_CODES[code]);
       return ' ';
     }
-    if (MANUFACTURERS.has(code)) {
-      tags.add(`mfr:${code}`);
+    if (PLAIN_BRANDS.has(code) || REF_BRANDS.has(code)) {
+      addBrand(code, tags, refs);
       return ' ';
     }
     return ` ${raw}`;
@@ -356,15 +380,21 @@ function popCommaMarkers(text: string, tags: Set<string>): string {
 }
 
 /**
- * Značka shopu "*X": *M = Motomax (výrobce), ostatní jsou odkaz na značku
- * ("*JIKOV karb.", "náhrada *SIM", "pro originál *PAL") -> `refs`, ne qualityTags.
+ * Značka shopu "*X": *M = výrobce Motomax (jen u shopu motomax), jikov/dellorto/domino/pal/
+ * bosch/vape -> variant.ref, ostatní -> tag mfr:x.
  */
-function popStarMarkers(text: string, tags: Set<string>, refs: Set<string>): string {
+function popStarMarkers(
+  text: string,
+  tags: Set<string>,
+  refs: Set<string>,
+  shopId: string | undefined,
+): string {
   return text.replace(/\*([^\s*,;()/]*)/g, (_, raw: string) => {
     const code = foldText(raw).replace(/[^a-z0-9]/g, '');
-    if (code === 'm') tags.add('mfr:motomax');
-    else if (code.startsWith('origi')) tags.add('original');
-    else if (code) refs.add(code);
+    if (code === 'm') {
+      if (shopId === 'motomax') tags.add('mfr:motomax');
+    } else if (code.startsWith('origi')) tags.add('original');
+    else if (code) addBrand(code, tags, refs);
     return ' ';
   });
 }
@@ -392,7 +422,7 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
   }
 
   // 2) značky shopu: "*X", ",,X", "X na konci, -e-
-  original = popStarMarkers(popCommaMarkers(original, tags), tags, refs);
+  original = popStarMarkers(popCommaMarkers(original, tags, refs), tags, refs, options.shopId);
   const grade = /\s"([A-Za-z0-9]{1,3})\s*$/.exec(original);
   if (grade) {
     tags.add(`grade:${grade[1].toLowerCase()}`);
@@ -403,7 +433,10 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
     original = original.replace(/(^|\s)-e-(?=\s|$)/g, ' ');
   }
 
-  let text = foldText(original).replace(/[„“']/g, ' ');
+  let text = foldText(original)
+    .replace(/[„“']/g, ' ')
+    // kódy karburátorů: "PHBG 19DS" -> phbg19ds, "SHA 16.16G" -> sha16.16g
+    .replace(/(?<![a-z])(phbg|sha)\s+(?=\d)/g, '$1');
 
   // 3) fráze
   let r = take(text, /bez povrchove upravy/g);
@@ -439,11 +472,17 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
   unit(new RegExp(`${NB}(${NUM})\\s*ml(?![a-z\\d])`, 'g'), 'ml');
   unit(new RegExp(`${NB}(\\d{1,2}(?:[.,]\\d+)?)\\s*l(?![a-z\\d])`, 'g'), 'l');
   unit(new RegExp(`${NB}(${NUM})\\s*mm2(?![a-z\\d])`, 'g'), 'mm2');
+  // proud: 8A, 16A (jen nalepené na číslo, aby se nepletlo spojení "350 a 250")
+  unit(new RegExp(`${NB}(${NUM})a(?![a-z\\d])`, 'g'), 'a');
+  unit(new RegExp(`${NB}(\\d+)\\s*clank\\w*`, 'g'), 'cl');
 
-  // patice žárovek a pojistek: Ba15d, Bay15d, P45t
+  // patice žárovek: Ba15d, Bay15d, P45t, P26s, E10, H4
   r = take(
     text,
-    new RegExp(`${NB}(?:bay?|bax)\\d{1,2}[a-z]?(?![a-z\\d])|${NB}p\\d{2}t(?![a-z\\d])`, 'g'),
+    new RegExp(
+      `${NB}(?:bay?|bax)\\d{1,2}[a-z]?(?![a-z\\d])|${NB}p\\d{2}[st](?![a-z\\d])|${NB}e\\d{2}(?![a-z\\d])|${NB}h\\d(?![a-z\\d-])`,
+      'g',
+    ),
   );
   text = r.text;
   for (const m of r.matches) dimensions.push(m[0]);
@@ -457,13 +496,26 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
   text = r.text;
   if (r.matches.length > 0) pack = `${r.matches[0][1]}ks`;
 
+  // řetězové kódy (428H, 520H, S410H) jen u řetězů/spon
+  if (/(?<![a-z])(retez\w*|spon\w*)/.test(text)) {
+    r = take(text, new RegExp(`${NB}s?(?:41\\d|42\\d|52\\d|53\\d)[hs]?(?![a-z\\d])`, 'g'));
+    text = r.text;
+    for (const m of r.matches) dimensions.push(m[0]);
+  }
+
   // řetězy: 1/2 x 5/16, 1/2 x 5,2
   r = take(text, new RegExp(`${NB}\\d+/\\d+\\s*[x×]\\s*(?:\\d+/\\d+|${NUM})`, 'g'));
   text = r.text;
   for (const m of r.matches) dimensions.push(normNum(m[0]).replace(/×/g, 'x'));
 
   // závit: M6x90, M5 x 0,75, M3-190, M8
-  r = take(text, new RegExp(`${NB}m\\d+(?:[.,]\\d+)?(?:\\s*[x×]\\s*${NUM}){1,2}(?:\\s*mm)?`, 'g'));
+  // u trysek je číslo za pomlčkou (M4 x 0,7 - 76) velikost trysky
+  const isJet = /(?<![a-z])trys\w*/.test(text);
+  const jetSize = isJet ? `(?:\\s*-\\s*\\d{2,3}(?![a-z\\d.,]))?` : '';
+  r = take(
+    text,
+    new RegExp(`${NB}m\\d+(?:[.,]\\d+)?(?:\\s*[x×]\\s*${NUM}){1,2}(?:\\s*mm)?${jetSize}`, 'g'),
+  );
   text = r.text;
   for (const m of r.matches) dimensions.push(normNum(m[0]));
   r = take(text, new RegExp(`${NB}m\\d+(?:[.,]\\d+)?-\\d+(?![a-z\\d])`, 'g'));
@@ -530,6 +582,7 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
   let finish: string | null = rawFinishPhrase ? 'raw' : null;
   let color: string | null = null;
   let size: Size | null = null;
+  let complete = false;
 
   // kódy s číslicí (2926, 2924h, sha1616g, f-876): písmena+číslice, nebo aspoň čtyři číslice;
   // bez množství s jednotkou (16A, 85g, 1m), označení modelů a velikostí papíru
@@ -539,7 +592,7 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
     const mixed = /\d/.test(token) && /[a-z]/.test(token);
     const longNumber = /^\d{4,}$/.test(token);
     if (!(mixed || longNumber) || NOT_A_CODE.test(token)) continue;
-    codes.add(token);
+    codes.add(token.replace(/\./g, ''));
   }
 
   // tokeny s číslicí nejsou slova partType
@@ -575,16 +628,23 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
         const fin = FINISH_WORDS.find(([re]) => re.test(word));
         if (fin) {
           finish ??= fin[1];
+        } else if (/^(kompletni|upl\w*)$/.test(word)) {
+          complete = true;
+        } else if (word === 'motomax') {
+          if (options.shopId === 'motomax') tags.add('mfr:motomax');
+        } else if (REF_BRANDS.has(word) || PLAIN_BRANDS.has(word)) {
+          addBrand(word, tags, refs);
         } else {
           const tag = TAG_WORDS.find(([re]) => re.test(word));
           if (tag) tags.add(tag[1]);
-          else if (MANUFACTURERS.has(word)) tags.add(`mfr:${word}`);
           else return;
         }
       }
     }
     consumed.add(i);
   });
+
+  if (!pack && complete) pack = 'complete';
 
   let position: Position | null = null;
   if (positions.has('front') && positions.has('rear')) position = 'front+rear';
