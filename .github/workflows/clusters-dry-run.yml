@@ -1,0 +1,32 @@
+name: Dry-run shlukování nabídek (read-only)
+
+# Jen čte shop_products a shop_product_models. Nic nezapisuje. Report jde celý do logu.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Páry A/B mezi shopy
+        run: npx tsx scripts/dry-run-clusters.ts --out clusters-report.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clusters-dry-run-report
+          path: clusters-report.md
