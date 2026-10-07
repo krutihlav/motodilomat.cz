@@ -7,8 +7,10 @@ import {
 } from './clusters';
 import type { OfferVariant } from './parseOfferName';
 
-/** Hodnota parts.source pro díly vzniklé shlukováním (cokoli jiného = ruční, nesahá se na to). */
-export const PARTS_SOURCE = 'cluster';
+/** parts.source pro automaticky vzniklé díly (check v migraci 015 povoluje 'auto' a 'manual'). */
+export const PARTS_SOURCE = 'auto';
+/** Díly s tímto source se nikdy nepřepisují. */
+export const MANUAL_SOURCE = 'manual';
 export const UNCATEGORIZED = 'Nezařazeno';
 /** Kategorie Motomaxu, které nejsou kategorií dílu. */
 const EXCLUDED_CATEGORIES = new Set(['nove naskladneno', 'akce', 'vyprodej']);
@@ -19,6 +21,8 @@ export type PlannedOffer = {
   name: string;
   price: number | null;
   matchStatus: string | null;
+  /** shop_products.part_id (díl, ke kterému je nabídka už přiřazená) */
+  partId: string | null;
 };
 
 export type PartPlan = {
@@ -163,15 +167,33 @@ export function buildPartPlans(
         name: item.name,
         price: item.price,
         matchStatus: item.matchStatus ?? null,
+        partId: item.partId ?? null,
       })),
     });
   }
   return plans.sort((a, b) => a.clusterKey.localeCompare(b.clusterKey));
 }
 
+export type ResolvedInfo = { slug: string; via: 'part_id' | 'cluster_key'; keyConflict?: boolean };
+
+/** Nabídky s match_status=auto a part_id, které nepatří do žádného dnešního shluku (zůstávají beze změny). */
+export function countStaleAuto(
+  sources: { id: string; matchStatus?: string | null; partId?: string | null }[],
+  plans: PartPlan[],
+): number {
+  const inPlan = new Set(plans.flatMap((plan) => plan.offers.map((offer) => offer.id)));
+  return sources.filter((s) => s.matchStatus === 'auto' && s.partId && !inPlan.has(s.id)).length;
+}
+
 export function renderPartPlans(
   plans: PartPlan[],
-  extra: { existing?: number; staleAuto?: number; columnsMissing?: boolean } = {},
+  extra: {
+    existing?: number;
+    staleAuto?: number;
+    columnsMissing?: boolean;
+    /** cluster_key plánu -> existující díl, který se použije */
+    resolved?: Map<string, ResolvedInfo>;
+  } = {},
 ): string {
   const offers = plans.reduce((sum, plan) => sum + plan.offers.length, 0);
   const out: string[] = ['# Díly ze shluků A (parts)', ''];
@@ -193,7 +215,12 @@ export function renderPartPlans(
   out.push('');
   plans.forEach((plan, index) => {
     out.push(`### ${index + 1}. ${plan.name}`);
-    out.push(`- slug: \`${plan.slug}\``);
+    const resolved = extra.resolved?.get(plan.clusterKey);
+    out.push(
+      resolved
+        ? `- existující díl: \`${resolved.slug}\` (nalezen podle ${resolved.via}${resolved.keyConflict ? '; cluster_key se nemění, nový klíč už má jiný díl' : ''}) – slug se nemění`
+        : `- slug: \`${plan.slug}\``,
+    );
     out.push(`- category: ${plan.category}`);
     out.push(`- partType: ${plan.partType}; variant: ${JSON.stringify(plan.variant)}`);
     out.push(`- modely: ${plan.models.join(', ') || '—'}`);

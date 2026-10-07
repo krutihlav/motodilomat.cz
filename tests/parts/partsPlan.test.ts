@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { findClusterPairs, type ClusterSource } from '../../src/lib/parts/clusters';
 import {
   buildPartPlans,
+  countStaleAuto,
   lastCategoryLevel,
   pickCategory,
   renderPartPlans,
@@ -115,6 +116,31 @@ describe('pickCategory', () => {
   });
 });
 
+describe('countStaleAuto', () => {
+  it('počítá auto nabídky s part_id mimo shluky, ostatní ne', () => {
+    const list = [
+      src('jawa-korda', 'Šroub setrvačníku Babetta 207', 40, ['babetta-207'], {
+        matchStatus: 'pending',
+      }),
+      src('motomax', 'Šroub setrvačníku BABETTA 207  *M', 60, ['babetta-207'], {
+        matchStatus: 'auto',
+        partId: 'x',
+      }),
+      src('javarna', 'Píst Jawa 350', 100, ['jawa-350-634'], { matchStatus: 'auto', partId: 'y' }),
+      src('javarna', 'Karburátor Jawa 350', 100, ['jawa-350-634'], {
+        matchStatus: 'auto',
+        partId: null,
+      }),
+      src('motokramek', 'Něco jiného Babetta 210', 100, ['babetta-210'], {
+        matchStatus: 'pending',
+      }),
+    ];
+    const plans = buildPartPlans(findClusterPairs(list).clusters);
+    expect(plans).toHaveLength(1);
+    expect(countStaleAuto(list, plans)).toBe(1);
+  });
+});
+
 describe('buildPartPlans', () => {
   const sources = () => [
     src('jawa-korda', 'Šroub setrvačníku Babetta 207', 40, ['babetta-207'], {
@@ -139,6 +165,7 @@ describe('buildPartPlans', () => {
     expect(plan.category).toBe('Setrvačník');
     expect(plan.models).toEqual(['babetta-207', 'babetta-228']);
     expect(plan.offers.map((o) => o.shopId).sort()).toEqual(['jawa-korda', 'motomax']);
+    expect(plan.offers.every((o) => o.partId === null)).toBe(true);
     expect(plan.clusterKey).toBe('setrvacnik sroub||babetta-207,babetta-228');
   });
 
@@ -180,5 +207,11 @@ describe('buildPartPlans', () => {
     expect(md).toContain('nových: 1');
     expect(md).toContain('mimo dnešní shluky (nechávám beze změny): 3');
     expect(renderPartPlans(plans, { columnsMissing: true })).toContain('migrace 015');
+    const resolved = new Map([
+      [plans[0].clusterKey, { slug: 'puvodni-slug-1234', via: 'part_id' as const }],
+    ]);
+    const withExisting = renderPartPlans(plans, { existing: 1, resolved });
+    expect(withExisting).toContain('existující díl: `puvodni-slug-1234` (nalezen podle part_id)');
+    expect(withExisting).not.toContain(`slug: \`${plans[0].slug}\``);
   });
 });

@@ -9,23 +9,35 @@
  *   npx tsx scripts/write-parts.ts            # dry-run
  *   npx tsx scripts/write-parts.ts --write    # zápis (až po schválení)
  *
- * Idempotentní: díl se hledá podle parts.cluster_key; existující se jen aktualizuje
- * (name, category, part_type, variant - slug a is_public se nemění), part_models se
- * srovnají na sjednocení modelů nabídek. Nabídky s match_status manual / rejected /
- * ignored se nikdy nepřepisují, díly s jiným source než 'cluster' se přeskočí.
+ * Idempotentní: existující díl se hledá nejdřív podle part_id nabídek ve shluku, až pak podle
+ * parts.cluster_key (změna sady modelů tak nevytvoří nový díl ani slug). Existující díl se jen
+ * aktualizuje (name, category, part_type, variant, cluster_key - slug a is_public se nemění),
+ * part_models se srovnají na sjednocení modelů nabídek. Nabídky s match_status manual /
+ * rejected / ignored se nikdy nepřepisují, díly se source = 'manual' se přeskočí. Nabídky
+ * s auto mimo shluky se nemění (jen se počítají v logu).
  * Díly vznikají s is_public = false.
  *
  * Vyžaduje sloupce parts.part_type, variant, cluster_key (unique), is_public, source
  * (migrace 015). Dry-run funguje i bez nich.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { applyPlans, WRITABLE_STATUSES, type PartsRepository } from '../src/lib/parts/applyPlans';
+import {
+  applyPlans,
+  resolveParts,
+  WRITABLE_STATUSES,
+  type PartsRepository,
+} from '../src/lib/parts/applyPlans';
 import {
   findClusterPairs,
   type ClusterSource,
   type FitGenericEntry,
 } from '../src/lib/parts/clusters';
-import { buildPartPlans, renderPartPlans, type PartPlan } from '../src/lib/parts/partsPlan';
+import {
+  buildPartPlans,
+  countStaleAuto,
+  renderPartPlans,
+  type PartPlan,
+} from '../src/lib/parts/partsPlan';
 
 const PAGE_SIZE = 1_000;
 const CHUNK = 200;
@@ -76,24 +88,32 @@ export async function loadSources(client: SupabaseClient): Promise<ClusterSource
 export class SupabasePartsRepository implements PartsRepository {
   constructor(private readonly client: SupabaseClient) {}
 
-  async findPartsByClusterKeys(keys: string[]) {
+  private async findParts(column: 'id' | 'cluster_key', values: string[]) {
     const found = [];
-    for (let i = 0; i < keys.length; i += CHUNK) {
+    for (let i = 0; i < values.length; i += CHUNK) {
       const { data, error } = await this.client
         .from('parts')
         .select('id, cluster_key, slug, source')
-        .in('cluster_key', keys.slice(i, i + CHUNK));
+        .in(column, values.slice(i, i + CHUNK));
       if (error) throw new Error(`Načtení parts selhalo: ${error.message}`);
       for (const row of data ?? []) {
         found.push({
           id: row.id as string,
-          clusterKey: row.cluster_key as string,
+          clusterKey: (row.cluster_key as string | null) ?? '',
           slug: row.slug as string,
           source: (row.source as string | null) ?? null,
         });
       }
     }
     return found;
+  }
+
+  findPartsByClusterKeys(keys: string[]) {
+    return this.findParts('cluster_key', keys);
+  }
+
+  findPartsByIds(ids: string[]) {
+    return this.findParts('id', ids);
   }
 
   async insertPart(part: Parameters<PartsRepository['insertPart']>[0]) {
@@ -123,6 +143,7 @@ export class SupabasePartsRepository implements PartsRepository {
         category: fields.category,
         part_type: fields.partType,
         variant: fields.variant,
+        ...(fields.clusterKey ? { cluster_key: fields.clusterKey } : {}),
       })
       .eq('id', id);
     if (error) throw new Error(`Aktualizace dílu ${id} selhala: ${error.message}`);
@@ -181,18 +202,31 @@ async function main() {
   const repo = new SupabasePartsRepository(client);
 
   let existing: number | undefined;
+  let resolved;
   let columnsMissing = false;
   try {
-    existing = (await repo.findPartsByClusterKeys(plans.map((p) => p.clusterKey))).length;
+    resolved = await resolveParts(repo, plans);
+    existing = resolved.size;
   } catch (error) {
     if (!/cluster_key|column/i.test(String(error))) throw error;
     columnsMissing = true;
   }
-  const inPlan = new Set(plans.flatMap((p) => p.offers.map((o) => o.id)));
-  const staleAuto = sources.filter(
-    (s) => s.matchStatus === 'auto' && s.partId && !inPlan.has(s.id),
-  ).length;
-  console.log(renderPartPlans(plans, { existing, staleAuto, columnsMissing }));
+  const staleAuto = countStaleAuto(sources, plans);
+  console.log(
+    renderPartPlans(plans, {
+      existing,
+      staleAuto,
+      columnsMissing,
+      resolved: resolved
+        ? new Map(
+            [...resolved].map(([key, r]) => [
+              key,
+              { slug: r.part.slug, via: r.via, keyConflict: r.keyConflict },
+            ]),
+          )
+        : undefined,
+    }),
+  );
 
   if (!process.argv.includes('--write')) {
     console.log('DRY-RUN: nic se nezapsalo (zápis jen s --write).');
