@@ -178,8 +178,9 @@ z nabídek s `model_match_level='type'` (celé nabídky, ne jen řádky type), j
 ve shluku; jinak sjednocení všech. (2) Kód (`variant.code`) jen na jedné straně
 párování neblokuje (rozdílný kód na obou stranách ano); do `variant` dílu se
 kód dává jen když ho mají všechny nabídky. (3) Nejednoznačnost: partneři z jednoho
-shopu, kteří jsou mezi sebou stejný díl (partType, varianta, modely – `note` se
-neporovnává), se spojí do jednoho shluku. (4) `parseOfferName`: nový atribut
+shopu, kteří jsou mezi sebou stejný díl (partType, varianta, modely a shodná `note`,
+nebo ji nemá žádný), se spojí do jednoho shluku; rozdílná `note` = jiný díl, shluk
+zůstává nejednoznačný (B). (4) `parseOfferName`: nový atribut
 `variant.material` (guma, kůže, ocel, hliník, plast, bronz, …) jen z konce názvu
 nebo ze závorky; nové barvy (béžová, rudá, tyrkysová, černo-…; víc barev se
 spojí `+`). Dry-run nad DB: `docs/reports/parts-write-dry-run-2026-10-07.md`.

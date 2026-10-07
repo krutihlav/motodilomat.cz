@@ -277,13 +277,18 @@ export function findClusterPairs(
 }
 
 /**
- * Jsou dvě nabídky "totéž": stejný partType, shodná varianta (bez chybějících/konfliktních atributů)
- * a stejná sada modelů? Poznámka (note) se neporovnává, stejně jako mezi shopy.
+ * Jsou dvě nabídky "totéž": stejný partType, shodná varianta (bez chybějících/konfliktních atributů),
+ * stejná poznámka (note shodná, nebo ji nemá žádná) a stejná sada modelů? Rozdílná note = jiný díl.
  */
 function sameOffer(x: ClusterItem, y: ClusterItem): boolean {
   if (x.parsed.partType !== y.parsed.partType) return false;
   const { conflicts, oneSided } = compareVariants(x.parsed.variant, y.parsed.variant);
-  return conflicts.length === 0 && oneSided.length === 0 && sameModels(x, y);
+  return (
+    conflicts.length === 0 &&
+    oneSided.length === 0 &&
+    x.parsed.variant.note === y.parsed.variant.note &&
+    sameModels(x, y)
+  );
 }
 
 /** Stejná sada modelů (u nabídek bez modelu stejný fit_generic). */
@@ -295,9 +300,9 @@ function sameModels(x: ClusterItem, y: ClusterItem): boolean {
 
 /**
  * Nejednoznačnost: má-li nabídka v A víc partnerů z jednoho shopu a ti se mezi sebou liší
- * (partType, varianta nebo sada modelů), jdou všechny její páry z A do B (důvod ambiguous).
- * Partneři, kteří jsou mezi sebou stejný díl (lišící se jen tagy, poznámkou a cenou), se
- * spojí přes nabídku do jednoho shluku.
+ * (partType, varianta, note nebo sada modelů), jdou všechny její páry z A do B (důvod ambiguous).
+ * Partneři, kteří jsou mezi sebou stejný díl (lišící se jen tagy a cenou; note shodná nebo
+ * žádná), se spojí přes nabídku do jednoho shluku.
  */
 function markAmbiguous(result: ClusterResult): void {
   const partners = new Map<string, Map<string, ClusterItem[]>>();

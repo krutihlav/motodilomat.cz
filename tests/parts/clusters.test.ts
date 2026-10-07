@@ -245,14 +245,24 @@ describe('nejednoznačnost (ambiguous)', () => {
     expect(result.clusters).toEqual([]);
   });
 
-  it('partneři lišící se jen poznámkou (note) jsou stejný díl -> jeden shluk', () => {
+  it('partneři s rozdílnou poznámkou (note) jsou jiný díl -> nejednoznačné, B', () => {
     const result = findClusterPairs([
       src('jawa-korda', 'Pružina spojky Jawa Pérák 12', 100, ['perak-350']),
       src('motomax', 'Pružina spojky JAWA 350 Pérák (standard)', 100, ['perak-350']),
       src('motomax', 'Pružina spojky JAWA 350 Pérák (tuning)', 100, ['perak-350']),
     ]);
+    expect(result.ambiguousItems).toBe(1);
+    expect(result.countA).toBe(0);
+    expect(result.clusters).toEqual([]);
+  });
+
+  it('partneři se shodnou poznámkou se spojí do jednoho shluku', () => {
+    const result = findClusterPairs([
+      src('jawa-korda', 'Pružina spojky Jawa Pérák 12', 100, ['perak-350']),
+      src('motomax', 'Pružina spojky JAWA 350 Pérák (tuning)', 100, ['perak-350']),
+      src('motomax', 'Pružina spojky JAWA 350 Pérák (tuning)  *M', 120, ['perak-350']),
+    ]);
     expect(result.ambiguousItems).toBe(0);
-    expect(result.countA).toBe(2);
     expect(result.clusters).toHaveLength(1);
     expect(result.clusters[0].items).toHaveLength(3);
   });

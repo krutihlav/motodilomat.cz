@@ -1,13 +1,13 @@
 # Dry-run parts-write: rozdíl proti dnešním 48 dílům
 
 Zdroj: /home/user/motodilomat.cz
-Vstup: 4225 nabídek (pending/auto), plánů dílů: 51
+Vstup: 4225 nabídek (pending/auto), plánů dílů: 50
 
 | | počet |
 |---|---:|
-| plány (díly po změně) | 51 |
+| plány (díly po změně) | 50 |
 | beze změny | 46 |
-| **nové díly** | 3 |
+| **nové díly** | 2 |
 | existující díly se změněnými part_models | 2 |
 | existující díly se změněným shlukem (nabídky) | 0 |
 | existující díly se změněným cluster_key | 2 |
@@ -30,15 +30,11 @@ Vstup: 4225 nabídek (pending/auto), plánů dílů: 51
 ## Zaniklé dnešní díly (0)
 
 
-## Nové díly (3)
+## Nové díly (2)
 
 - **Pružina rozběhové čelisti Babetta 210** — `celist pruzin rozbeh` {}; modely: babetta-210, babetta-225; nabídek 2
     - [jawa-korda] Pružina rozběhové čelisti Babetta 210 — 18 Kč
     - [motomax] Pružina rozběhových čelistí BABETTA 210, 225 (standard)  *M — 20 Kč
-- **Elektroinstalace Jawa 350/360 Panelka** — `elektroinstalac` {}; modely: panelka-350-360; nabídek 3
-    - [javarna] Elektroinstalace Jawa 350/360 Panelka — 865 Kč
-    - [motomax] Elektroinstalace JAWA 250, 350 Panelka (originál zapalování) — 700 Kč
-    - [motomax] Elektroinstalace JAWA 250, 350 Panelka (relé samostatně) — 500 Kč
 - **Rozpěrka výstupní hřídele Babetta 210, 225** — `hridel rozperk vystupn` {}; modely: babetta-210, babetta-225; nabídek 2
     - [motokramek] Rozpěrka výstupní hřídele Babetta 210, 225 — 41 Kč
     - [motomax] Rozpěrka výstupní hřídele BABETTA 210, 225 (21017096)  *M — 35 Kč
