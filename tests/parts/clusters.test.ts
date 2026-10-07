@@ -204,6 +204,103 @@ describe('no_fit a konflikty podle atributu', () => {
   });
 });
 
+describe('nejednoznačnost (ambiguous)', () => {
+  it('víc rozdílných partnerů z jednoho shopu -> všechny páry nabídky jdou do B', () => {
+    const result = findClusterPairs([
+      src('jawa-korda', 'Pružina spojky Jawa Pérák 12', 100, ['perak-350']),
+      src('motomax', 'Pružina spojky JAWA 350 Pérák (standard)', 100, ['perak-350']),
+      src('motomax', 'Pružina spojky JAWA 350 Pérák (tuning)', 100, ['perak-350']),
+    ]);
+    expect(result.countA).toBe(0);
+    expect(result.countB).toBe(2);
+    expect(result.ambiguousItems).toBe(1);
+    expect(result.ambiguousPairs).toBe(2);
+    expect(result.pairs.every((p) => p.reasons.includes('ambiguous'))).toBe(true);
+    expect(result.byBasis.model).toEqual({ A: 0, B: 2 });
+    expect(result.clusters).toEqual([]);
+  });
+
+  it('partneři lišící se jen tagy a cenou jsou v pořádku (A zůstává)', () => {
+    const result = findClusterPairs([
+      src('jawa-korda', 'Pružina spojky Jawa Pérák 12', 100, ['perak-350']),
+      src('motomax', 'Pružina spojky JAWA 350 Pérák', 100, ['perak-350']),
+      src('motomax', 'Pružina spojky JAWA 350 Pérák  *M', 190, ['perak-350']),
+    ]);
+    expect(result.countA).toBe(2);
+    expect(result.ambiguousItems).toBe(0);
+    expect(result.clusters).toHaveLength(1);
+    expect(result.clusters[0].items).toHaveLength(3);
+  });
+
+  it('partneři z různých shopů se nepovažují za nejednoznačné', () => {
+    const result = findClusterPairs([
+      src('jawa-korda', 'Pružina spojky Jawa Pérák 12', 100, ['perak-350']),
+      src('motomax', 'Pružina spojky JAWA 350 Pérák (standard)', 100, ['perak-350']),
+      src('javarna', 'Pružina spojky JAWA 350 Pérák (tuning)', 100, ['perak-350']),
+    ]);
+    expect(result.ambiguousItems).toBe(0);
+    expect(result.countA).toBe(3);
+  });
+
+  it('note se mezi shopy neporovnává (různé note není konflikt)', () => {
+    const a = parseOfferName('Pružina spojky JAWA Pérák (standard)', { shopId: 'motomax' }).variant;
+    const b = parseOfferName('Pružina spojky JAWA Pérák (tuning)', { shopId: 'javarna' }).variant;
+    expect(compareVariants(a, b)).toEqual({ conflicts: [], oneSided: [] });
+  });
+
+  it('with se porovnává jako ostatní atributy', () => {
+    const a = parseOfferName('Kluzáky vidlice s maticí JAWA Kývačka', {
+      shopId: 'motomax',
+    }).variant;
+    const b = parseOfferName('Kluzáky vidlice s pouzdry JAWA Kývačka', {
+      shopId: 'javarna',
+    }).variant;
+    const c = parseOfferName('Kluzáky vidlice JAWA Kývačka', { shopId: 'jawa-korda' }).variant;
+    expect(compareVariants(a, b).conflicts).toEqual(['with']);
+    expect(compareVariants(a, c)).toEqual({ conflicts: [], oneSided: ['with'] });
+  });
+});
+
+describe('shluky A a pořadí B', () => {
+  const result = findClusterPairs([
+    src('jawa-korda', 'Šroub setrvačníku Babetta 207', 40, ['babetta-207']),
+    src('motomax', 'Šroub setrvačníku BABETTA 207  *M', 60, ['babetta-207']),
+    src('javarna', 'Šroub setrvačníku Babetta 207', 50, ['babetta-207']),
+    src('motokramek', 'Kryt řetězu Jawa Pionýr 20', 100, ['pionyr-20']),
+    src('motomax', 'Kryt řetězu JAWA 50 - 20  *M', 105, ['pionyr-20']),
+  ]);
+
+  it('A se vypisuje jako shluky: díl -> všechny nabídky (souvislé komponenty)', () => {
+    expect(result.countA).toBe(4);
+    expect(result.clusters.map((c) => [c.partType, c.items.length, c.pairs])).toEqual([
+      ['kryt retez', 2, 1],
+      ['setrvacnik sroub', 3, 3],
+    ]);
+    const md = renderClusterReport(result);
+    expect(md).toContain('- A: **4** párů ve **2** shlucích');
+    expect(md).toContain('## Shluky A (2 shluků, 5 nabídek, 4 párů)');
+    expect(md).toContain('### setrvacnik sroub — 3 nabídek (javarna, jawa-korda, motomax)');
+  });
+
+  it('B: nejdřív stejný partType, pak podle Jaccardu', () => {
+    const r = findClusterPairs([
+      src('javarna', 'Kryt řetězu horní Jawa Pionýr 20', 100, ['pionyr-20']),
+      src('motomax', 'Kryt řetězu JAWA 50 - 20  *M', 500, ['pionyr-20']),
+      src('motokramek', 'Kryt řetězu plastový Jawa Pionýr 20', 100, ['pionyr-20']),
+      src('jawa-korda', 'Kryt řetězu Jawa Pionýr 20', 100, ['pionyr-20']),
+    ]);
+    const ranked = rankB(r.pairs).map((p) => [
+      p.a.parsed.partType === p.b.parsed.partType,
+      p.jaccard,
+    ]);
+    const firstDifferent = ranked.findIndex(([same]) => !same);
+    expect(firstDifferent).toBeGreaterThan(0);
+    expect(ranked.slice(0, firstDifferent).every(([same]) => same)).toBe(true);
+    const jaccards = ranked.slice(firstDifferent).map(([, j]) => j as number);
+    expect(jaccards).toEqual([...jaccards].sort((a, b) => b - a));
+  });
+});
+
 describe('renderClusterReport', () => {
   const result = findClusterPairs([
     src('jawa-korda', 'Šroub setrvačníku Babetta 207', 40, ['babetta-207']),
@@ -218,7 +315,8 @@ describe('renderClusterReport', () => {
     expect(md).toContain('- A: **1**');
     expect(md).toContain('- B: **2**');
     expect(md).toContain('- zahozeno pro konflikt varianty: **1**');
-    expect(md).toContain('## Páry A (1)');
+    expect(md).toContain('## Shluky A (1 shluků, 2 nabídek, 1 párů)');
+    expect(md).toContain('### setrvacnik sroub — 2 nabídek (jawa-korda, motomax) [babetta-207]');
     expect(md).toContain('`jawa-korda` Šroub setrvačníku Babetta 207 — 40 Kč');
     expect(md).toContain('`motomax` Šroub setrvačníku BABETTA 207  *M — 60 Kč');
     expect(md).toContain('## Top 1 párů B z 2 (s důvodem)');
