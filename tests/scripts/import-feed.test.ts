@@ -196,6 +196,43 @@ describe('runImport - pojistky a pravidla kvality', () => {
   });
 });
 
+describe('runImport - dárkové poukazy', () => {
+  it('uloží poukaz a hned ho označí ignored (jen pending), ostatní nechá pending', async () => {
+    const ignored: string[][] = [];
+    const { repository } = makeCountingRepository(CRAWL_SHOP);
+    repository.ignorePendingProducts = async (ids) => {
+      ignored.push(ids);
+      return ids.length;
+    };
+    async function* crawl() {
+      yield crawlItem('ok', 'Píst Jawa 350', 500);
+      yield crawlItem('voucher', 'Dárkový poukaz v hodnotě 1000 Kč', 1000, {
+        categoryText: 'Jawa',
+      });
+    }
+
+    const summary = await runImport(CRAWL_SHOP.id, repository, { crawlShop: crawl });
+
+    expect(ignored).toEqual([['id-voucher']]);
+    expect(summary.ignoredVoucher).toBe(1);
+    expect(summary.newItems).toBe(2);
+    expect(summary.errors).toBe(0);
+  });
+
+  it('bez poukazů ignorePendingProducts nevolá', async () => {
+    const { repository } = makeCountingRepository(CRAWL_SHOP);
+    const spy = vi.spyOn(repository, 'ignorePendingProducts');
+    async function* crawl() {
+      yield crawlItem('ok', 'Píst Jawa 350', 500);
+    }
+
+    const summary = await runImport(CRAWL_SHOP.id, repository, { crawlShop: crawl });
+
+    expect(spy).not.toHaveBeenCalled();
+    expect(summary.ignoredVoucher).toBe(0);
+  });
+});
+
 describe('runImport', () => {
   it('refuses to run when feed_permission is false, unlike runDryRun', async () => {
     const shop: FakeShop = {

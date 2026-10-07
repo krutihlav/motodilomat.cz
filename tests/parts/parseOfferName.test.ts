@@ -1,34 +1,38 @@
 import { describe, expect, it } from 'vitest';
-import { parseOfferName } from '../../src/lib/parts/parseOfferName';
-import { buildPartsReport, renderPartsReport } from '../../src/lib/parts/partsReport';
+import { parseOfferName, stemWord } from '../../src/lib/parts/parseOfferName';
+import {
+  buildPartsReport,
+  findNearPairs,
+  renderPartsReport,
+} from '../../src/lib/parts/partsReport';
 
 const p = (name: string, shopId?: string) => parseOfferName(name, { shopId });
 const v = (name: string, shopId?: string) => p(name, shopId).variant;
 
 describe('parseOfferName - partType', () => {
   it('odstraní značku, model a rozsahy typů', () => {
-    expect(p('Hřídel hlavní (CZ) - JAWA 550-555', 'motojelinek').partType).toBe('hlavni hridel');
+    expect(p('Hřídel hlavní (CZ) - JAWA 550-555', 'motojelinek').partType).toBe('hlavn hridel');
     expect(p('Elektroinstalace - JAWA 90, Cross, Roadster, Trail', 'motojelinek').partType).toBe(
-      'elektroinstalace',
+      'elektroinstalac',
     );
     expect(p('Silentblok zadního tlumiče Jawa 634-640, ČZ 476-488', 'jawa-korda').partType).toBe(
-      'silentblok tlumice',
+      'silentblok tlumic',
     );
   });
 
   it('je bez diakritiky, lowercase a nezávislý na pořadí slov', () => {
     expect(p('Kolo ozubené 19z. (2.rychl.), originál - ČZ 476-488', 'motojelinek').partType).toBe(
-      'kolo ozubene',
+      'kol ozuben',
     );
     expect(p('Ozubené kolo Jawa 350 634').partType).toBe(p('KOLO OZUBENÉ Jawa 350 634').partType);
     expect(p('Píst kroužek Pionýr').partType).toBe(p('Kroužek píst Pionýr').partType);
   });
 
   it('polohu, stranu, barvu a povrch nechá jen ve variantě', () => {
-    expect(p('Držák zadního světla Pionýr 555', 'motokramek').partType).toBe('drzak svetla');
-    expect(p('Držák světla Pionýr 555').partType).toBe('drzak svetla');
+    expect(p('Držák zadního světla Pionýr 555', 'motokramek').partType).toBe('drzak svetl');
+    expect(p('Držák světla Pionýr 555').partType).toBe('drzak svetl');
     expect(p('Kryt nádrže, LEVÝ (JAWA) - JAWA 350 634, 350 OHC', 'motojelinek').partType).toBe(
-      'kryt nadrze',
+      'kryt nadrz',
     );
   });
 
@@ -124,6 +128,9 @@ describe('parseOfferName - varianty', () => {
       color: null,
       teeth: null,
       pack: null,
+      size: null,
+      ref: null,
+      code: null,
     });
   });
 });
@@ -132,13 +139,13 @@ describe('parseOfferName - qualityTags', () => {
   it('původ, výrobce, stav', () => {
     expect(
       p('Píst JAWA 50 - 05, 20, 21, 23  38,75 / 14,1 úpl. *RAM', 'motomax').qualityTags,
-    ).toEqual(['complete', 'mfr:ram']);
+    ).toEqual(['complete']);
     expect(p('Věnec Rozeta 56z ČZ Sport SK', 'jawa-korda').qualityTags).toEqual(['origin-sk']);
     expect(p('Sedlo Jawa Pérák - tmavě hnědé - kůže - ČR', 'javarna').qualityTags).toEqual([
       'origin-cz',
     ]);
     expect(p('Potrubí sání karb. *JIKOV BABETTA - plast  *M', 'motomax').qualityTags).toEqual([
-      'mfr:jikov',
+      'mfr:motomax',
     ]);
     expect(
       p('Kolo ozubené 19z. (2.rychl.), originál - ČZ 476-488', 'motojelinek').qualityTags,
@@ -146,6 +153,220 @@ describe('parseOfferName - qualityTags', () => {
     expect(p('repasované kolo jawa 250/350 kývačka zadní nerez', 'jawa-korda').qualityTags).toEqual(
       ['refurbished'],
     );
+  });
+});
+
+describe('parseOfferName - variant.code', () => {
+  it('tokeny s číslicí se ukládají, ne zahazují', () => {
+    for (const [name, code] of [
+      ['Karburátor 2926 se sytičem JAWA, ČZ', '2926'],
+      ['Pružina šoupátka JAWA Pérák (*JIKOV 2924H)  *M', '2924h'],
+      ['Sada těsnění karb. *DELLORTO 1412L/1616G', '1412l 1616g'],
+      ['Karburátor *DELLORTO PHBG17BS  ,,IT', 'phbg17bs'],
+      ['Pneu 3,25 - 16 *FORTUNE F-876  4pl. -e-', 'f-876'],
+      ['Ložisko 6306 C3  ,,NTN', 'c3'],
+    ] as const) {
+      expect(v(name, 'motomax').code).toBe(code);
+    }
+  });
+
+  it('ložiska jsou dimension, množství s jednotkou, model a ordinály nejsou kód', () => {
+    expect(v('Ložisko 6202 2RS', 'motomax')).toMatchObject({ dimension: '6202-2rs', code: null });
+    for (const name of [
+      'Pojistka keramická 16A',
+      'Kabel zelený, průřez 1mm2 (cena za 1m)',
+      'Montážní silikonový tmel *K2 - čirý 85g od -51°C do +204°C',
+      'Sada šroubů BABETTA STAR M134',
+      'Rámeček světlometu JAWA Pérák, 1Typ. Kývačka  ,,CZ',
+    ]) {
+      expect(v(name, 'motomax').code).toBeNull();
+    }
+  });
+
+  it('kód není v partType', () => {
+    expect(p('Karburátor 2926 se sytičem JAWA, ČZ', 'motomax').partType).toBe('karburator sytic');
+  });
+});
+
+describe('parseOfferName - stemming', () => {
+  it('sjednotí pádové tvary', () => {
+    for (const form of ['kolena', 'koleno', 'kolen', 'kolene'])
+      expect(stemWord(form)).toBe('kolen');
+    expect(stemWord('paprsek')).toBe(stemWord('paprsky'));
+    expect(stemWord('vyfuku')).toBe(stemWord('vyfuk'));
+    expect(stemWord('pistni')).toBe(stemWord('pistniho'));
+    expect(stemWord('osa')).toBe(stemWord('osy'));
+  });
+
+  it('slova do 4 znaků se neřeší pravidlem, jen výčtem', () => {
+    expect(stemWord('pneu')).toBe('pneu');
+    expect(stemWord('kryt')).toBe('kryt');
+    expect(stemWord('pist')).toBe('pist');
+    expect(stemWord('kolo')).toBe('kol');
+    expect(stemWord('kola')).toBe('kol');
+    expect(stemWord('sady')).toBe(stemWord('sada'));
+    expect(p('Pneu 3,25 - 18 *MITAS H-04', 'motomax').partType).toBe('pneu');
+  });
+
+  it('kolena/koleno výfuku skončí ve stejném partType', () => {
+    const a = p('Kolena výfuku (doutníky) JAWA 350 Kývačka, Panelka - sada L+P', 'motomax');
+    const b = p('Koleno výfuku - Stadion S22', 'motojelinek');
+    expect(a.partType).toBe('kolen vyfuk');
+    expect(b.partType).toBe('kolen vyfuk');
+  });
+});
+
+describe('parseOfferName - značky Motomaxu podle prefixu', () => {
+  it('jen *M je výrobce (mfr:motomax), *X je odkaz na značku -> variant.ref', () => {
+    expect(p('Pružina spojky JAWA 50 - 550, 555  *M', 'motomax')).toMatchObject({
+      qualityTags: ['mfr:motomax'],
+      variant: { ref: null },
+    });
+    for (const [name, ref] of [
+      ['Žárovka  6V 15W  Ba15s *Elta', 'elta'],
+      ['Pneu 2,25 - 19 *FORTUNE F-851  2pl.', 'fortune'],
+      ['Tryska M4 x 0,7 - 50 *JIKOV karb.', 'jikov'],
+      ['Karburátor *DELLORTO PHBG17BS  ,,IT', 'dellorto'],
+      ['Mřížka bzučáku pro originál *PAL JAWA 50 - 550 - 23, Stadion S22, Jawetta - chrom', 'pal'],
+      ['Kryt zadní svítilny BABETTA 228, 207 (náhrada *SIM)', 'sim'],
+      ['Koleno sání karburátoru *JIKOV / *DELLORTO 16mm BABETTA 210, 225  *M', 'dellorto jikov'],
+    ] as const) {
+      const parsed = p(name, 'motomax');
+      expect(parsed.variant.ref).toBe(ref);
+      expect(
+        parsed.qualityTags.filter((tag) => tag.startsWith('mfr:') && tag !== 'mfr:motomax'),
+      ).toEqual([]);
+    }
+    expect(p('Ložiska motoru JAWA 50 - 550  ,,NTN (sada)', 'motomax').variant.ref).toBeNull();
+  });
+
+  it('ref není v partType', () => {
+    expect(p('Tryska M4 x 0,7 - 50 *JIKOV karb.', 'motomax').partType).toBe('karburator trysk');
+  });
+
+  it(',,CZ = původ ČR, ostatní kódy zemí taky', () => {
+    expect(p('Indukční cívka 12V s objímkou  ,,CZ', 'motomax').qualityTags).toEqual(['origin-cz']);
+    expect(p('Brzdová pumpa přední MZ (s páčkou)  ,,TW', 'motomax').qualityTags).toEqual([
+      'origin-tw',
+    ]);
+    expect(p('Karburátor *DELLORTO PHBG17BS  ,,IT', 'motomax').qualityTags).toEqual(['origin-it']);
+    expect(p('Ložisko 6306 C3  ,,NTN', 'motomax').qualityTags).toEqual(['mfr:ntn']);
+  });
+
+  it('"X na konci názvu = jakost, -e- = homologace', () => {
+    const rings = p('Pístní kroužek 38,75x2mm  STADION, JAWA 50 - 05, 20, 21, 23 "B', 'motomax');
+    expect(rings.qualityTags).toEqual(['grade:b']);
+    expect(rings.partType).toBe('krouzk pistn');
+    expect(p('Pneu 3,25 - 16 *FORTUNE F-876  4pl. -e-', 'motomax').qualityTags).toEqual(['e-mark']);
+    // uvozovky uprostřed názvu jakost nejsou
+    expect(p('Sedlo BABETTA 210, 225 černo-šedé "PUNK"  *M', 'motomax').qualityTags).toEqual([
+      'mfr:motomax',
+    ]);
+  });
+
+  it('značky a kódy nezůstanou v partType', () => {
+    expect(p('Ložisko 6306 C3  ,,NTN', 'motomax').partType).toBe('lozisk');
+    expect(p('Indukční cívka 12V s objímkou  ,,CZ', 'motomax').partType).toBe(
+      'civk indukcn objimk',
+    );
+  });
+});
+
+describe('parseOfferName - jednotky a zbytky rozměrů', () => {
+  it('ccm, Ba15s, P45t, PL, Kč, Hz, km/h, mm2 skončí v dimension', () => {
+    expect(v('Píst JAWA-ČZ, ČZ - 175ccm 60,00 / 16 *Almet', 'motomax').dimension).toBe(
+      '175ccm 60.00',
+    );
+    expect(p('Píst JAWA-ČZ, ČZ - 175ccm 60,00 / 16 *Almet', 'motomax').partType).toBe('pist');
+    expect(p('Žárovka  6V 15W  Ba15s *Elta', 'motomax')).toMatchObject({
+      partType: 'zarovk',
+      variant: { voltage: '6v', dimension: '15w ba15s' },
+    });
+    expect(v('Žárovka 12V 35/35W P45t', 'motomax').dimension).toContain('p45t');
+    expect(p('Pneu 3,25 - 16 *FORTUNE F-876  4pl. -e-', 'motomax').variant.dimension).toBe(
+      '4pl 3.25-16',
+    );
+    expect(p('Dárkový poukaz v hodnotě 1000 Kč', 'motomax').variant.dimension).toBe('1000kc');
+    expect(v('Houkačka 12V 420Hz D-88mm šnek  *Elta', 'motomax').dimension).toBe('420hz d88mm');
+    expect(v('Tachometr 110km/h ČZ 476, 477, Tatran, Manet', 'motomax').dimension).toBe('110kmh');
+    expect(v('Kabel bílý, průřez 1mm2 (cena za 1m)', 'motomax').dimension).toBe('1mm2');
+  });
+
+  it('řetěz a rozměry s lomítkem', () => {
+    expect(
+      v(
+        'Řetěz 1/2 x 5,2 - 114 článků, YBN-MOTOMAX 428S + spona, BABETTA, JAWA 50, SIMSON  *M',
+        'motomax',
+      ).dimension,
+    ).toBe('1/2x5.2');
+  });
+
+  it('jednotky a kódy s číslicí nejsou v partType', () => {
+    const noise = /\b(ccm|ba|pl|kc|hz|mm|w|kmh)\b/;
+    for (const name of [
+      'Píst JAWA-ČZ, ČZ - 175ccm 60,00 / 16 *Almet',
+      'Žárovka  12V 10W  Ba15s',
+      'Pneu 3,25 - 16 *FORTUNE F-876  4pl. -e-',
+      'Dárkový poukaz v hodnotě 1000 Kč',
+      'Karburátor *DELLORTO PHBG17BS  ,,IT',
+    ]) {
+      expect(p(name, 'motomax').partType).not.toMatch(noise);
+    }
+    expect(p('Karburátor *DELLORTO PHBG17BS  ,,IT', 'motomax').partType).toBe('karburator');
+  });
+});
+
+describe('parseOfferName - size', () => {
+  it('velký/malý/dlouhý/krátký -> variant.size', () => {
+    expect(v('Kryt řídítek, velký - JAWA 50 20-23', 'motojelinek').size).toBe('large');
+    expect(v('Krytka řídítek malá JAWA 50, BABETTA 207, 228 - Lakovaná  *M', 'motomax').size).toBe(
+      'small',
+    );
+    expect(v('Výztuha / držák přd. blatníku krátký STADION S11 - surová', 'motomax').size).toBe(
+      'short',
+    );
+    expect(v('Sada šroubů motoru BABETTA 207 (velká)  *M', 'motomax').size).toBe('large');
+    expect(v('Gumy podlahy JAWA 50 - 05, 20 sada (1x dlouhá, 1x krátká)  *M', 'motomax').size).toBe(
+      'long',
+    );
+    expect(v('Píst JAWA 50 - 05, 20, 21, 23  38,75 / 14,1', 'motomax').size).toBeNull();
+  });
+
+  it('slovo size není v partType', () => {
+    expect(p('Kryt řídítek, velký - JAWA 50 20-23', 'motojelinek').partType).toBe('kryt riditk');
+  });
+});
+
+describe('parseOfferName - "Sada" v názvu', () => {
+  it('Sada na začátku / před modelem je součást partType, ne pack', () => {
+    for (const [name, shop, partType] of [
+      ['SADA TĚSNĚNÍ MOTORU JAWA 50 - 550, 555  *M', 'motomax', 'motor sada tesnen'],
+      ['Sada šroubů motoru BABETTA 207 (velká)  *M', 'motomax', 'motor sada sroub'],
+      [
+        'Pístní sada P+L s kroužky 59,75,na čep 16 - Jawa 350',
+        'motojelinek',
+        'cep krouzk pistn sada',
+      ],
+      ['Kompletní sada BABETTA STAR 134, STELLA  *M', 'motomax', 'sada'],
+    ] as const) {
+      const parsed = p(name, shop);
+      expect(parsed.partType).toBe(partType);
+      expect(parsed.variant.pack).toBeNull();
+    }
+  });
+
+  it('sada za modelem, za pomlčkou nebo v závorce je pack', () => {
+    expect(
+      p('Kolena výfuku (doutníky) JAWA 350 Kývačka, Panelka - sada L+P', 'motomax').variant.pack,
+    ).toBe('sada');
+    expect(p('Ložiska motoru JAWA 50 - 550, 555  ,,NTN (sada)', 'motomax')).toMatchObject({
+      partType: 'lozisk motor',
+      variant: { pack: 'sada' },
+    });
+    expect(p('Šlapadla (pedály) plast Babetta - sada', 'motokramek').variant.pack).toBe('sada');
+    expect(
+      p('Paprsky M3 x 160mm chrom BABETTA 207, 210, 225  (sada 36ks)', 'motomax').variant.pack,
+    ).toBe('36ks');
   });
 });
 
@@ -182,5 +403,45 @@ describe('partsReport', () => {
     ]) {
       expect(md).toContain(heading);
     }
+  });
+
+  it('vypíše top qualityTags a dvojice partType lišící se jedním slovem', () => {
+    const data = [
+      { shopId: 'motomax', name: 'Pružina spojky JAWA 50 - 550, 555  *M' },
+      { shopId: 'motomax', name: 'Pružina spojky JAWA 350  *M' },
+      { shopId: 'motomax', name: 'Pružina brzdy JAWA 350' },
+      { shopId: 'javarna', name: 'Pružina spojky Jawa Babetta 210' },
+      { shopId: 'motomax', name: 'Pružina JAWA 350' },
+    ];
+    const report = buildPartsReport(data);
+    expect(report.topQualityTags[0]).toEqual({
+      tag: 'mfr:motomax',
+      total: 2,
+      byShop: { motomax: 2 },
+    });
+    const pairs = report.nearPairs.map((pr) => [pr.a, pr.b, pr.diff]);
+    expect(pairs).toContainEqual(['pruzin spojk', 'brzd pruzin', ['spojk', 'brzd']]);
+    expect(pairs).toContainEqual(['pruzin spojk', 'pruzin', ['spojk', '']]);
+    const md = renderPartsReport(report);
+    expect(md).toContain('## Top 1 qualityTags');
+    expect(md).toContain('## Top 0 variant.ref');
+    expect(md).toContain('## Top 0 variant.code');
+    expect(md).toContain('## Dvojice partType lišící se jedním slovem');
+  });
+
+  it('findNearPairs: záměna slova i slovo navíc, bez duplicit', () => {
+    const counts = new Map([
+      ['kryt retez', 5],
+      ['kryt ridit', 3],
+      ['kryt', 2],
+      ['sedl potah', 1],
+      ['paprsk', 4],
+    ]);
+    const pairs = findNearPairs(counts);
+    expect(pairs.map((pr) => [pr.a, pr.b, pr.diff])).toEqual([
+      ['kryt retez', 'kryt ridit', ['retez', 'ridit']],
+      ['kryt retez', 'kryt', ['retez', '']],
+      ['kryt ridit', 'kryt', ['ridit', '']],
+    ]);
   });
 });

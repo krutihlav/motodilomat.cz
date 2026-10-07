@@ -6,7 +6,12 @@ import { createServiceRoleClient } from '../src/lib/supabase/server';
 import { parseHeurekaFeed } from '../src/lib/feed/parseHeurekaFeed';
 import { parseGoogleFeed } from '../src/lib/feed/parseGoogleFeed';
 import { isRelevantItem } from '../src/lib/feed/relevanceFilter';
-import { assessItem, EXCLUSION_REASONS, type ExclusionReason } from '../src/lib/feed/itemQuality';
+import {
+  assessItem,
+  autoIgnoreReason,
+  EXCLUSION_REASONS,
+  type ExclusionReason,
+} from '../src/lib/feed/itemQuality';
 import type { FeedItem } from '../src/lib/feed/types';
 import { crawlShop } from '../src/lib/crawl/crawlShop';
 import {
@@ -39,6 +44,8 @@ export type ImportSummary = {
   excluded: Record<ExclusionReason, number>;
   /** Uložené položky s review_flags (cena k ověření, moderní Jawa). */
   flagged: number;
+  /** Dárkové poukazy: uloženy a rovnou match_status='ignored' (jen pending bez part_id). */
+  ignoredVoucher: number;
   /** Jen v režimu --refresh-known-urls. */
   refresh?: RefreshSummary;
   errors: number;
@@ -492,11 +499,13 @@ export async function runImport(
     staleMarkingSkipped: false,
     excluded: emptyExcluded(),
     flagged: 0,
+    ignoredVoucher: 0,
     errors: 0,
   };
 
   let batch: FeedItem[] = [];
   const reviewFlags = new Map<string, string[]>();
+  const autoIgnoreItemIds = new Set<string>();
 
   const flushBatch = async () => {
     if (batch.length === 0) {
@@ -535,6 +544,14 @@ export async function runImport(
       }
 
       await repository.insertPriceHistory(priceHistoryEntries);
+
+      const toIgnore = batch
+        .filter((item) => autoIgnoreItemIds.has(item.itemId))
+        .map((item) => idsByItem.get(item.itemId))
+        .filter((id): id is string => !!id);
+      if (toIgnore.length > 0) {
+        summary.ignoredVoucher += await repository.ignorePendingProducts(toIgnore);
+      }
     } catch (err) {
       summary.errors += batch.length;
       console.error('Chyba při zápisu dávky do Supabase:', err);
@@ -560,6 +577,9 @@ export async function runImport(
     if (assessment.flags.length > 0) {
       summary.flagged += 1;
       reviewFlags.set(item.itemId, assessment.flags);
+    }
+    if (autoIgnoreReason(item.productName)) {
+      autoIgnoreItemIds.add(item.itemId);
     }
 
     batch.push(item);
@@ -695,6 +715,7 @@ function printSummary(summary: ImportSummary): void {
   console.log(`Položek celkem ve feedu: ${summary.totalInFeed}`);
   console.log(`Relevantních:            ${summary.relevant}`);
   printQualityCounts(summary.excluded, summary.flagged);
+  console.log(`Ignored (poukazy):       ${summary.ignoredVoucher}`);
   console.log(`Nových:                  ${summary.newItems}`);
   console.log(`Změněných cen:           ${summary.priceChanges}`);
   console.log(
