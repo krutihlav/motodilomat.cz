@@ -11,6 +11,11 @@ export type ClusterSource = {
   modelIds: string[];
   /** shop_products.fit_generic */
   fitGeneric: FitGenericEntry[] | null;
+  /** shop_products.category_text ("A > B > C"), jen pro zápis dílů */
+  categoryText?: string | null;
+  /** shop_products.match_status a part_id, jen pro zápis dílů */
+  matchStatus?: string | null;
+  partId?: string | null;
 };
 
 export type ClusterItem = ClusterSource & { parsed: ParsedOffer; partWords: Set<string> };
@@ -82,6 +87,7 @@ export const VARIANT_ATTRIBUTES: (keyof OfferVariant)[] = [
   'ref',
   'code',
   'with',
+  'version',
 ];
 
 export function buildClusterItems(sources: ClusterSource[]): ClusterItem[] {
@@ -273,13 +279,21 @@ function sameOffer(x: ClusterItem, y: ClusterItem): boolean {
   return (
     conflicts.length === 0 &&
     oneSided.length === 0 &&
-    x.parsed.variant.note === y.parsed.variant.note
+    x.parsed.variant.note === y.parsed.variant.note &&
+    sameModels(x, y)
   );
+}
+
+/** Stejná sada modelů (u nabídek bez modelu stejný fit_generic). */
+function sameModels(x: ClusterItem, y: ClusterItem): boolean {
+  const a = [...new Set(x.modelIds)].sort().join(',');
+  const b = [...new Set(y.modelIds)].sort().join(',');
+  return a === b && (a !== '' || fitKey(x.fitGeneric) === fitKey(y.fitGeneric));
 }
 
 /**
  * Nejednoznačnost: má-li nabídka v A víc partnerů z jednoho shopu a ti se mezi sebou liší
- * (partType, varianta nebo note), jdou všechny její páry z A do B (důvod ambiguous).
+ * (partType, varianta, note nebo sada modelů), jdou všechny její páry z A do B (důvod ambiguous).
  * Partneři lišící se jen tagy a cenou jsou v pořádku.
  */
 function markAmbiguous(result: ClusterResult): void {

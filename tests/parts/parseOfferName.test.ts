@@ -133,6 +133,7 @@ describe('parseOfferName - varianty', () => {
       code: null,
       with: null,
       note: null,
+      version: null,
     });
   });
 });
@@ -354,6 +355,29 @@ describe('parseOfferName - krok 3b', () => {
     for (const shop of ['motomax', 'jawa-korda', 'javarna', 'motojelinek', 'motokramek']) {
       expect(p('Pružina spojky JAWA 50 - 550, 555  *M', shop).qualityTags).toEqual(['mfr:motomax']);
     }
+  });
+});
+
+describe('parseOfferName - version (1.typ / 2.typ)', () => {
+  it('1.typ, 1. Typ, 1 typ, (1 typ), 1Typ. -> variant.version', () => {
+    for (const [name, shop] of [
+      ['Matice předního teleskopu - JAWA 50 23 (Mustang) 1.typ', 'motojelinek'],
+      ['Víko spínací skříňky JAWA Pérák, Kývačka 1. Typ (logo Zbrojovka) - plast', 'motomax'],
+      ['Řídítka standard JAWA 634 (1 typ)  "B', 'motomax'],
+      ['Rámeček světlometu JAWA Pérák, 1Typ. Kývačka  ,,CZ', 'motomax'],
+      ['Podložka startovací hřídele JAWA Pérák, Kývačka 1 Typ. 33x24x1mm', 'motomax'],
+    ] as const) {
+      expect(v(name, shop).version).toBe('1');
+    }
+    expect(v('Kryt světlometu JAWA Pérák 2.typ', 'motomax').version).toBe('2');
+  });
+
+  it('"typ 634" ani "Jawa 50 typ 550" nejsou version a typ nezůstane v partType', () => {
+    expect(v('Přední světlo Jawa 350 typ 634 retro', 'motomax').version).toBeNull();
+    expect(v('Výrobní štítek Jawa 50 typ 05 Pionýr leptaný', 'motomax').version).toBeNull();
+    expect(
+      p('Kryt řetězu JAWA 50 - 23A Mustang Golden Sport 1.Typ', 'motomax').partType,
+    ).not.toContain('typ');
   });
 });
 

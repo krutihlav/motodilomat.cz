@@ -261,6 +261,37 @@ describe('nejednoznačnost (ambiguous)', () => {
   });
 });
 
+describe('nejednoznačnost: partneři se liší sadou modelů', () => {
+  it('partneři z jednoho shopu s jinou sadou modelů -> ambiguous', () => {
+    const result = findClusterPairs([
+      src('jawa-korda', 'Kryt nádrže Jawa 50 pionýr 20 21', 100, ['pionyr-20', 'pionyr-21']),
+      src('motomax', 'Kryt nádrže JAWA 50 - 20  *M', 100, ['pionyr-20']),
+      src('motomax', 'Kryt nádrže JAWA 50 - 21  *M', 100, ['pionyr-21']),
+    ]);
+    expect(result.countA).toBe(0);
+    expect(result.ambiguousItems).toBe(1);
+    expect(result.pairs.every((p) => p.reasons.includes('ambiguous'))).toBe(true);
+  });
+
+  it('partneři se stejnou sadou modelů jsou v pořádku', () => {
+    const result = findClusterPairs([
+      src('jawa-korda', 'Kryt nádrže Jawa 50 pionýr 20 21', 100, ['pionyr-20', 'pionyr-21']),
+      src('motomax', 'Kryt nádrže JAWA 50 - 20, 21  *M', 100, ['pionyr-21', 'pionyr-20']),
+      src('motomax', 'Kryt nádrže JAWA 50 - 20, 21', 105, ['pionyr-20', 'pionyr-21']),
+    ]);
+    expect(result.countA).toBe(2);
+    expect(result.ambiguousItems).toBe(0);
+  });
+
+  it('version 1 vs 2 je konflikt, 1 vs chybějící je B', () => {
+    const a = parseOfferName('Víko skříňky JAWA Pérák 1.typ', { shopId: 'motomax' }).variant;
+    const b = parseOfferName('Víko skříňky JAWA Pérák 2.typ', { shopId: 'javarna' }).variant;
+    const c = parseOfferName('Víko skříňky JAWA Pérák', { shopId: 'jawa-korda' }).variant;
+    expect(compareVariants(a, b).conflicts).toEqual(['version']);
+    expect(compareVariants(a, c)).toEqual({ conflicts: [], oneSided: ['version'] });
+  });
+});
+
 describe('shluky A a pořadí B', () => {
   const result = findClusterPairs([
     src('jawa-korda', 'Šroub setrvačníku Babetta 207', 40, ['babetta-207']),
