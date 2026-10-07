@@ -1,8 +1,18 @@
 import { parseModels } from '../models/parseModels';
 
 export type Side = 'left' | 'right' | 'both';
-export type Position =
-  'front' | 'rear' | 'front+rear' | 'side' | 'upper' | 'lower' | 'inner' | 'outer';
+/** Jedna nebo víc pozic spojených "+", vždy v pořadí front, rear, side, upper, lower, inner, outer ("front+upper"). */
+export type Position = string;
+type PositionName = 'front' | 'rear' | 'side' | 'upper' | 'lower' | 'inner' | 'outer';
+const POSITION_ORDER: PositionName[] = [
+  'front',
+  'rear',
+  'side',
+  'upper',
+  'lower',
+  'inner',
+  'outer',
+];
 
 export type Size = 'large' | 'small' | 'long' | 'short';
 
@@ -20,6 +30,10 @@ export type OfferVariant = {
   size: Size | null;
   /** Odkaz na značku (jikov, dellorto, domino, pal, bosch, vape), s prefixem "*" i bez. Víc hodnot oddělených mezerou. */
   ref: string | null;
+  /** Slova za s/se/včetně/bez: "s:matic", "bez:drzak" (stemované). Víc hodnot oddělených mezerou. */
+  with: string | null;
+  /** Nerozpoznaný obsah závorek (tuning, rele samostatne). Mezi shopy se neporovnává. */
+  note: string | null;
   /** Kódy s číslicí bez teček a mezer (2926, 2924h, sha1616g, phbg19ds, f-876). Víc hodnot oddělených mezerou. */
   code: string | null;
 };
@@ -127,6 +141,7 @@ const STOPWORDS = new Set([
   'ba',
   'pvc',
   'vc',
+  'za',
 ]);
 
 /** Značky, na které nabídka jen odkazuje ("*JIKOV karb.", "pro originál *PAL"): variant.ref, s prefixem i bez. */
@@ -150,12 +165,14 @@ const PLAIN_BRANDS = new Set([
   'fortune',
   'mitas',
   'rubena',
+  'mototechna',
+  'duells',
 ]);
 
 const SIDE_LEFT = /^(lev(y|a|e|ou|eho|ych)|levostran\w*)$/;
 const SIDE_RIGHT = /^(prav(y|a|e|ou|eho|ych)|pravostran\w*)$/;
 
-const POSITION_PREFIX: [RegExp, Exclude<Position, 'front+rear'>][] = [
+const POSITION_PREFIX: [RegExp, PositionName][] = [
   [/^(predn|prd$)/, 'front'],
   [/^(zadn|zad$)/, 'rear'],
   [/^bocn/, 'side'],
@@ -167,7 +184,7 @@ const POSITION_PREFIX: [RegExp, Exclude<Position, 'front+rear'>][] = [
 
 const FINISH_WORDS: [RegExp, string][] = [
   [/^chrom/, 'chrome'],
-  [/^(zinek|zinkovan|pozinkovan)/, 'zinc'],
+  [/^(zinek|zinkovan|pozinkovan|zn)$|^(zinkovan|pozinkovan)/, 'zinc'],
   [/^nerez/, 'stainless'],
   [/^nikl/, 'nickel'],
   [/^lesten/, 'polished'],
@@ -225,7 +242,7 @@ const ORIGIN_CODES: Record<string, string> = {
 };
 
 const TAG_WORDS: [RegExp, string][] = [
-  [/^(original|org)$/, 'original'],
+  [/^(original|orig|org)$/, 'original'],
   [/^nahrada$/, 'replacement'],
   [/^(repasovan|renovovan|regenerovan)/, 'refurbished'],
   [/^(novy|nova|nove)$/, 'new'],
@@ -233,7 +250,6 @@ const TAG_WORDS: [RegExp, string][] = [
   [/^jakost$/, 'quality'],
   [/^kvalitn\w*$/, 'quality'],
   [/^top$/, 'top'],
-  [/^standard\w*$/, 'standard'],
   [/^zesilen/, 'reinforced'],
   [/^(cr|cesk[yae]|ceska)$/, 'origin-cz'],
   [/^(sk|slovensk[yae]|slovenska)$/, 'origin-sk'],
@@ -351,6 +367,17 @@ function take(text: string, re: RegExp): { text: string; matches: RegExpExecArra
 const NOT_A_CODE =
   /^(?:(?:cena|za)?\d{1,3}(?:\.\d{1,2})?(?:a|m|cm|mm|t|d|l|ml|kg|hr|klic|kus|typ|kont|valec|rychl)|\d{1,3}g|\d+x[a-z]*|\d+\.[a-z]+|a\d|[dl]\d+(?:mm)?|m\d{3}|mz\d+|s(?:11|22|23)|sv\d|bab?-?\d{3}|\d+-[a-z]+)$/;
 
+/** Předložky -> prefix variant.with: s/se/vč./včetně = "s", bez = "bez". */
+const WITH_PREPOSITIONS: Record<string, string> = {
+  s: 's',
+  se: 's',
+  vc: 's',
+  vcetne: 's',
+  bez: 'bez',
+};
+/** Číslovky mezi předložkou a podstatným jménem ("s jedním budíkem"). */
+const WITH_SKIP = /^(jedn\w*|dv\w*|tri|tremi|ctyr\w*)$/;
+
 const NUM = String.raw`\d+(?:[.,]\d+)?`;
 const QUOTE = String.raw`["”″]`;
 const NB = String.raw`(?<![a-z\d])`;
@@ -380,20 +407,14 @@ function popCommaMarkers(text: string, tags: Set<string>, refs: Set<string>): st
 }
 
 /**
- * Značka shopu "*X": *M = výrobce Motomax (jen u shopu motomax), jikov/dellorto/domino/pal/
+ * Značka shopu "*X": *M = výrobce Motomax (ve všech shopech, Korda prodává jejich výrobky), jikov/dellorto/domino/pal/
  * bosch/vape -> variant.ref, ostatní -> tag mfr:x.
  */
-function popStarMarkers(
-  text: string,
-  tags: Set<string>,
-  refs: Set<string>,
-  shopId: string | undefined,
-): string {
+function popStarMarkers(text: string, tags: Set<string>, refs: Set<string>): string {
   return text.replace(/\*([^\s*,;()/]*)/g, (_, raw: string) => {
     const code = foldText(raw).replace(/[^a-z0-9]/g, '');
-    if (code === 'm') {
-      if (shopId === 'motomax') tags.add('mfr:motomax');
-    } else if (code.startsWith('origi')) tags.add('original');
+    if (code === 'm') tags.add('mfr:motomax');
+    else if (code.startsWith('origi')) tags.add('original');
     else if (code) addBrand(code, tags, refs);
     return ' ';
   });
@@ -414,15 +435,17 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
     ...parsed.generic.map((g) => g.matchedText),
   ].sort((a, b) => b.length - a.length);
   for (const text of hitTexts) {
-    // parser modelů občas pohltí navazující rozměry ("JAWA 50 - 05, 20 38,75 / 14,1")
-    const modelPart = text.replace(/[\s/,]*\d+[.,]\d+(?:[\s/]+\d+[.,]\d+)*\s*$/, '');
+    // Text modelů se maže celý, kromě navazujícího rozměru pístu ("JAWA 50 - 05, 20 38,75 / 14,1").
+    // "555,05", "476,477" ani "21,23" jsou výčty typů, ne rozměry.
+    const tail = /(?<=^|[\s/,])[3-9]\d[.,]\d{2}(?:\s*\/\s*\d+[.,]\d+)?\s*$/.exec(text);
+    const modelPart = tail ? text.slice(0, tail.index) : text;
     const blanked = blankFirst(original, modelPart);
     original = blanked.text;
     if (blanked.at >= 0) modelStart = Math.min(modelStart, blanked.at);
   }
 
   // 2) značky shopu: "*X", ",,X", "X na konci, -e-
-  original = popStarMarkers(popCommaMarkers(original, tags, refs), tags, refs, options.shopId);
+  original = popStarMarkers(popCommaMarkers(original, tags, refs), tags, refs);
   const grade = /\s"([A-Za-z0-9]{1,3})\s*$/.exec(original);
   if (grade) {
     tags.add(`grade:${grade[1].toLowerCase()}`);
@@ -492,9 +515,15 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
   const teeth = r.matches.length > 0 ? Number(r.matches[0][1]) : null;
 
   let pack: string | null = null;
-  r = take(text, new RegExp(`(?<!\\d)(\\d+)\\s*ks(?![a-z\\d])`, 'g'));
+  r = take(text, new RegExp(`(?<!\\d)(\\d+)\\s*(?:ks|kus\\w*)(?![a-z\\d])`, 'g'));
   text = r.text;
   if (r.matches.length > 0) pack = `${r.matches[0][1]}ks`;
+  // "1 kus": číslo mohl pohltit výčet typů modelu ("Babetta 210 1 kus")
+  if (!pack) {
+    r = take(text, new RegExp(`${NB}kus(?![a-z\\d])`, 'g'));
+    text = r.text;
+    if (r.matches.length > 0) pack = '1ks';
+  }
 
   // řetězové kódy (428H, 520H, S410H) jen u řetězů/spon
   if (/(?<![a-z])(retez\w*|spon\w*)/.test(text)) {
@@ -578,7 +607,7 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
 
   // 5) slova: varianty, kvalita; zbytek = partType
   const consumed = new Set<number>();
-  const positions = new Set<Exclude<Position, 'front+rear'>>();
+  const positions = new Set<PositionName>();
   let finish: string | null = rawFinishPhrase ? 'raw' : null;
   let color: string | null = null;
   let size: Size | null = null;
@@ -607,8 +636,46 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
     return depth > 0 || /\s[-–—]\s/.test(before) || at > modelStart;
   };
 
+  // slova za s/se/včetně/bez -> variant.with ("s:matic", "bez:drzak")
+  const withTokens = new Set<string>();
+  const withIdx = new Set<number>();
   words.forEach(({ word, at }, i) => {
-    if (SIDE_LEFT.test(word)) {
+    const prep = WITH_PREPOSITIONS[word];
+    if (!prep) return;
+    let from = at + word.length;
+    for (let j = i + 1; j < words.length && j <= i + 3; j += 1) {
+      const next = words[j];
+      if (/[,;()/\-–—]/.test(text.slice(from, next.at))) break;
+      from = next.at + next.word.length;
+      if (WITH_SKIP.test(next.word)) continue;
+      if (
+        next.word.length < 3 ||
+        WITH_PREPOSITIONS[next.word] ||
+        STOPWORDS.has(next.word) ||
+        VEHICLE_WORDS.has(next.word) ||
+        REF_BRANDS.has(next.word) ||
+        PLAIN_BRANDS.has(next.word)
+      ) {
+        break;
+      }
+      withTokens.add(`${prep}:${stemWord(next.word)}`);
+      withIdx.add(i);
+      withIdx.add(j);
+      break;
+    }
+  });
+
+  const noteExtra = new Set<string>();
+
+  words.forEach(({ word, at }, i) => {
+    if (withIdx.has(i)) {
+      consumed.add(i);
+      return;
+    }
+    if (word === 'l' || word === 'p') {
+      const one: Side = word === 'l' ? 'left' : 'right';
+      side = side && side !== one ? 'both' : one;
+    } else if (SIDE_LEFT.test(word)) {
       side = side && side !== 'left' ? 'both' : 'left';
     } else if (SIDE_RIGHT.test(word)) {
       side = side && side !== 'right' ? 'both' : 'right';
@@ -616,6 +683,8 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
       // "Sada šroubů" je díl; "... JAWA 50 - sada" / "(sada)" je balení
       if (!isTrailing(at)) return;
       pack ??= 'sada';
+    } else if (word === 'standard') {
+      noteExtra.add('standard');
     } else if (colorOf(word)) {
       color ??= colorOf(word);
     } else if (SIZE_STEMS.some(([re]) => re.test(word))) {
@@ -631,7 +700,7 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
         } else if (/^(kompletni|upl\w*)$/.test(word)) {
           complete = true;
         } else if (word === 'motomax') {
-          if (options.shopId === 'motomax') tags.add('mfr:motomax');
+          tags.add('mfr:motomax');
         } else if (REF_BRANDS.has(word) || PLAIN_BRANDS.has(word)) {
           addBrand(word, tags, refs);
         } else {
@@ -646,19 +715,27 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
 
   if (!pack && complete) pack = 'complete';
 
-  let position: Position | null = null;
-  if (positions.has('front') && positions.has('rear')) position = 'front+rear';
-  else if (positions.size > 0) position = [...positions][0];
+  const position: Position | null =
+    positions.size > 0 ? POSITION_ORDER.filter((name) => positions.has(name)).join('+') : null;
 
   // partType: text bez závorek, bez variant/stop/vehicle slov a čísel, stemované
   const noParens = text
     .replace(/\([^)]*\)/g, (m) => ' '.repeat(m.length))
     .replace(/\([^)]*$/g, (m) => ' '.repeat(m.length));
   const typeWords = new Set<string>();
+  const noteWords: string[] = [];
   words.forEach(({ word, at }, i) => {
-    if (consumed.has(i) || word.length < 2) return;
-    if (noParens[at] === ' ') return;
+    if (consumed.has(i)) {
+      if (noteExtra.has(word)) noteWords.push(word);
+      return;
+    }
+    if (word.length < 2) return;
     if (STOPWORDS.has(word) || VEHICLE_WORDS.has(word)) return;
+    // nerozpoznaný obsah závorek není partType, ale poznámka
+    if (noParens[at] === ' ') {
+      noteWords.push(word);
+      return;
+    }
     typeWords.add(stemWord(word));
   });
   const partType = [...typeWords].sort().join(' ');
@@ -676,6 +753,8 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
       pack,
       size,
       ref: refs.size > 0 ? [...refs].sort().join(' ') : null,
+      with: withTokens.size > 0 ? [...withTokens].sort().join(' ') : null,
+      note: noteWords.length > 0 ? [...new Set(noteWords)].join(' ') : null,
       code: codes.size > 0 ? [...codes].sort().join(' ') : null,
     },
     qualityTags: [...tags].sort(),

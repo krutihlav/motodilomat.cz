@@ -131,6 +131,8 @@ describe('parseOfferName - varianty', () => {
       size: null,
       ref: null,
       code: null,
+      with: null,
+      note: null,
     });
   });
 });
@@ -184,7 +186,10 @@ describe('parseOfferName - variant.code', () => {
   });
 
   it('kód není v partType', () => {
-    expect(p('Karburátor 2926 se sytičem JAWA, ČZ', 'motomax').partType).toBe('karburator sytic');
+    expect(p('Karburátor 2926 se sytičem JAWA, ČZ', 'motomax')).toMatchObject({
+      partType: 'karburator',
+      variant: { code: '2926', with: 's:sytic' },
+    });
   });
 });
 
@@ -219,7 +224,8 @@ describe('parseOfferName - krok 2 (tryska, úpl., značky, povrch, kódy, synony
     });
     expect(v('Krytka řídítek malá JAWA 50 - Lakovaná  *M', 'motomax').finish).toBe('painted');
     const parsed = p('Píst Jawa dovoz kvalitní top standard 1. jakost', 'jawa-korda');
-    expect(parsed.qualityTags).toEqual(['import', 'quality', 'standard', 'top']);
+    expect(parsed.qualityTags).toEqual(['import', 'quality', 'top']);
+    expect(parsed.variant.note).toBe('standard');
     expect(parsed.partType).toBe('pist');
   });
 
@@ -267,6 +273,90 @@ describe('parseOfferName - krok 2 (tryska, úpl., značky, povrch, kódy, synony
   });
 });
 
+describe('parseOfferName - krok 3b', () => {
+  it('1: výčty typů modelů nejsou rozměr (555,05,20 není 555.05)', () => {
+    for (const [name, shop] of [
+      ['Krk řízení, CHROM (CZ) - Jawa 50 555,05,20', 'motojelinek'],
+      ['Kryt náboje kola, PŘEDNÍ (LEŠTĚNÝ) - JAWA 50 555,05', 'motojelinek'],
+      ['Manžeta sání - ČZ 476,477', 'motomax'],
+      ['Zástěrka ČZ 488 487 485 471 472.5 472.6. Profi', 'motomax'],
+      ['Dílenská příručka ČZ 125, 180 - 488.3, 487.3  *M', 'motomax'],
+    ] as const) {
+      expect(v(name, shop).dimension).toBeNull();
+    }
+    // rozměr pístu za výčtem typů zůstává
+    expect(v('Píst JAWA 50 - 05, 20, 21, 23  38,75 / 14,1 *Almet', 'motomax').dimension).toBe(
+      '38.75/14.1',
+    );
+    expect(v('Píst BABETTA 207, 210, 225 39,25 úpl. *RAM', 'motomax').dimension).toBe('39.25');
+  });
+
+  it('2: slova za s/se/včetně/bez -> variant.with', () => {
+    expect(v('Brzdová pumpa přední MZ (s páčkou)  ,,TW', 'motomax').with).toBe('s:pack');
+    expect(v('Karburátor 2926 se sytičem JAWA, ČZ', 'motomax').with).toBe('s:sytic');
+    expect(v('Přední blatník JAWA 550 (bez držáků)', 'motomax').with).toBe('bez:drzak');
+    expect(
+      v('Elektroinstalace (VAPE) 12V - JAWA 350 634 (s jedním budíkem)', 'motojelinek').with,
+    ).toBe('s:budik');
+    expect(v('Těsnění pod hlavu vč. matice Jawa 350', 'javarna').with).toBe('s:matic');
+    expect(v('Řídítka JAWA 350 - 639, 640  - chrom', 'motomax').with).toBeNull();
+    // slovo za předložkou není v partType
+    expect(p('Kluzáky vidlice s maticí JAWA Kývačka', 'motomax').partType).toBe('kluzak vidlic');
+  });
+
+  it('3: nerozpoznaný obsah závorek -> variant.note, standard už není tag', () => {
+    expect(p('Pružina spojky JAWA Pérák/kývačka (standard) *M', 'motomax')).toMatchObject({
+      qualityTags: ['mfr:motomax'],
+      variant: { note: 'standard' },
+    });
+    expect(v('Klika JAWA 50 (tuning)', 'motomax').note).toBe('tuning');
+    expect(v('Elektroinstalace JAWA / ČZ spínačka (relé samostatně)', 'motomax').note).toBe(
+      'rele samostatne',
+    );
+    // rozpoznané věci v závorce jsou varianty, ne note
+    expect(v('Kryt nádrže, LEVÝ (JAWA) - JAWA 350 634', 'motojelinek')).toMatchObject({
+      side: 'left',
+      note: null,
+    });
+    expect(p('Pružina spojky JAWA 50 (tuning)', 'motomax').partType).toBe('pruzin spojk');
+  });
+
+  it('5: position může mít víc hodnot, side samostatné L, P, L+P', () => {
+    expect(v('Vzpěra blatníku JAWA 50 -550 (přední horní)', 'motomax').position).toBe(
+      'front+upper',
+    );
+    expect(v('Vzpěra blatníku JAWA 50 -550 (přední dolní)', 'motomax').position).toBe(
+      'front+lower',
+    );
+    expect(v('Pružina přd./zadní brzdy STADION S11 - chrom  *M', 'motomax').position).toBe(
+      'front+rear',
+    );
+    expect(v('Zrcátko oválné M8, L / P - chrom', 'motomax').side).toBe('both');
+    expect(v('Zrcátko M8 L - chrom', 'motomax').side).toBe('left');
+    expect(v('Zrcátko M8 P - chrom', 'motomax').side).toBe('right');
+    expect(v('Kolena výfuku JAWA 350 - sada L+P', 'motomax').side).toBe('both');
+  });
+
+  it('6: pack 1kus / 1 kus / 1ks, ZN = zinek, mototechna a duells = mfr', () => {
+    for (const name of [
+      'Řadící čelist lehká Babetta 210 1kus',
+      'Řadící čelist lehká Babetta 210 1 kus',
+      'Řadící čelist lehká Babetta 210 1ks',
+    ]) {
+      expect(v(name, 'motomax').pack).toBe('1ks');
+    }
+    expect(v('Matice M8 ZN JAWA 50', 'motomax').finish).toBe('zinc');
+    expect(p('Kabel Mototechna 2m', 'motomax').qualityTags).toEqual(['mfr:mototechna']);
+    expect(p('Kapota Duells Jawa 350', 'motomax').qualityTags).toEqual(['mfr:duells']);
+  });
+
+  it('7: *M = mfr:motomax ve všech shopech', () => {
+    for (const shop of ['motomax', 'jawa-korda', 'javarna', 'motojelinek', 'motokramek']) {
+      expect(p('Pružina spojky JAWA 50 - 550, 555  *M', shop).qualityTags).toEqual(['mfr:motomax']);
+    }
+  });
+});
+
 describe('parseOfferName - stemming', () => {
   it('sjednotí pádové tvary', () => {
     for (const form of ['kolena', 'koleno', 'kolen', 'kolene'])
@@ -297,12 +387,14 @@ describe('parseOfferName - stemming', () => {
 });
 
 describe('parseOfferName - značky Motomaxu podle prefixu', () => {
-  it('*M = mfr:motomax jen u shopu motomax', () => {
+  it('*M = mfr:motomax u všech shopů (Korda prodává jejich výrobky)', () => {
     expect(p('Pružina spojky JAWA 50 - 550, 555  *M', 'motomax')).toMatchObject({
       qualityTags: ['mfr:motomax'],
       variant: { ref: null },
     });
-    expect(p('Pružina spojky JAWA 50 - 550, 555  *M', 'javarna').qualityTags).toEqual([]);
+    expect(p('Pružina spojky JAWA 50 - 550, 555  *M', 'jawa-korda').qualityTags).toEqual([
+      'mfr:motomax',
+    ]);
   });
 
   it('jikov, dellorto, domino, pal, bosch, vape -> variant.ref (s prefixem i bez, ve všech shopech)', () => {
@@ -378,9 +470,7 @@ describe('parseOfferName - značky Motomaxu podle prefixu', () => {
 
   it('značky a kódy nezůstanou v partType', () => {
     expect(p('Ložisko 6306 C3  ,,NTN', 'motomax').partType).toBe('lozisk');
-    expect(p('Indukční cívka 12V s objímkou  ,,CZ', 'motomax').partType).toBe(
-      'civk indukcn objimk',
-    );
+    expect(p('Indukční cívka 12V s objímkou  ,,CZ', 'motomax').partType).toBe('civk indukcn');
   });
 });
 
@@ -454,11 +544,7 @@ describe('parseOfferName - "Sada" v názvu', () => {
     for (const [name, shop, partType] of [
       ['SADA TĚSNĚNÍ MOTORU JAWA 50 - 550, 555  *M', 'motomax', 'motor sada tesnen'],
       ['Sada šroubů motoru BABETTA 207 (velká)  *M', 'motomax', 'motor sada sroub'],
-      [
-        'Pístní sada P+L s kroužky 59,75,na čep 16 - Jawa 350',
-        'motojelinek',
-        'cep krouzk pist sada',
-      ],
+      ['Pístní sada P+L s kroužky 59,75,na čep 16 - Jawa 350', 'motojelinek', 'cep pist sada'],
       ['Kompletní sada BABETTA STAR 134, STELLA  *M', 'motomax', 'sada'],
     ] as const) {
       const parsed = p(name, shop);
