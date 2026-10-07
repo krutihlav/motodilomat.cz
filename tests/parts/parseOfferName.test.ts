@@ -126,6 +126,7 @@ describe('parseOfferName - varianty', () => {
       position: null,
       finish: null,
       color: null,
+      material: null,
       teeth: null,
       pack: null,
       size: null,
@@ -665,5 +666,45 @@ describe('partsReport', () => {
       ['kryt retez', 'kryt', ['retez', '']],
       ['kryt ridit', 'kryt', ['ridit', '']],
     ]);
+  });
+});
+
+describe('parseOfferName - materiál a barva na konci', () => {
+  const parse = (name: string, shopId = 'motojelinek') => parseOfferName(name, { shopId });
+
+  it('materiál na konci jde do varianty, ne do partType', () => {
+    const leather = parse('Sedlo Jawa Pérák - tmavě hnědé - kůže - ČR', 'javarna');
+    expect(leather.partType).toBe('sedl');
+    expect(leather.variant.material).toBe('leather');
+    expect(leather.variant.color).toBe('brown');
+    const rubber = parse('Gumová rukojeť Jawa předválečná velká', 'jawa-korda');
+    expect(rubber.partType).toContain('gum');
+    expect(rubber.variant.material).toBeNull();
+  });
+
+  it('materiál v závorce a víc materiálů', () => {
+    const p = parse('Pouzdro přední vidlice, HORNÍ (hliník) - JAWA, ČZ');
+    expect(p.variant.material).toBe('aluminium');
+    expect(p.partType).toBe('pouzdr vidlic');
+    const q = parse('Kryt zadního světla - plast, guma', 'motomax');
+    expect(q.variant.material).toBe('plastic+rubber');
+    expect(q.partType).toBe('kryt svetl');
+  });
+
+  it('materiál na začátku je součást dílu', () => {
+    const p = parse('Guma nádrže 54x2cm - JAWA 50 23', 'motomax');
+    expect(p.variant.material).toBeNull();
+    expect(p.partType).toContain('gum');
+    expect(parse('Plech sedla JAWA 50 - 05, 20, 21', 'motomax').variant.material).toBeNull();
+  });
+
+  it('barva: béžový, rudá, černo-červený', () => {
+    expect(parse('Potah sedla BÉŽOVÝ - Jawetta Sport', 'motojelinek').variant.color).toBe('beige');
+    const s = parse('Samolepka Mustang - rudá - sada', 'motokramek');
+    expect(s.variant.color).toBe('red');
+    expect(s.partType).toBe('nalepk');
+    expect(parse('Koberec pod motocykl ČERNO-ČERVENÝ - JAWA', 'motojelinek').partType).toBe(
+      'koberec motocykl',
+    );
   });
 });

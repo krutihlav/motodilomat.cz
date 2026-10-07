@@ -145,12 +145,17 @@ export function buildPartPlans(
       writable.includes(item.matchStatus ?? 'pending'),
     );
     if (items.length < 2) continue;
-    const models = [...new Set(items.flatMap((item) => item.modelIds))].sort();
+    // modely jen z nabídek s model_match_level='type' (celé nabídky), jsou-li ve shluku; jinak ze všech
+    const typeItems = items.filter((item) => item.modelMatchLevel === 'type');
+    const modelItems = typeItems.length > 0 ? typeItems : items;
+    const models = [...new Set(modelItems.flatMap((item) => item.modelIds))].sort();
     const fits = [...new Set(items.map((item) => fitKey(item.fitGeneric)))].sort();
     const representative = [...items].sort(
       (a, b) => a.shopId.localeCompare(b.shopId) || a.name.localeCompare(b.name),
     )[0];
     const variant = variantForKey(representative.parsed.variant);
+    // kód jen na části nabídek neblokuje shodu (compareVariants), do varianty dílu ale nepatří
+    if (items.some((item) => item.parsed.variant.code === null)) delete variant.code;
     const clusterKey = buildClusterKey(cluster.partType, variant, models, fits);
     const name = shortestName(items.map((item) => item.name));
     plans.push({

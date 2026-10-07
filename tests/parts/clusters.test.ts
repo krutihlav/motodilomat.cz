@@ -112,7 +112,7 @@ describe('findClusterPairs', () => {
   it('B: podobný partType (Jaccard ≥ 0,5), ne stejný', () => {
     const result = findClusterPairs([
       src('javarna', 'Kryt řetězu Jawa Pionýr 20', 100, ['pionyr-20']),
-      src('motomax', 'Kryt řetězu plastový JAWA 50 - 20  *M', 105, ['pionyr-20']),
+      src('motomax', 'Kryt řetězu ochranný JAWA 50 - 20  *M', 105, ['pionyr-20']),
     ]);
     expect(result.countB).toBe(1);
     expect(result.pairs[0].reasons[0]).toMatch(/^jaccard 0\.\d\d/);
@@ -204,12 +204,37 @@ describe('no_fit a konflikty podle atributu', () => {
   });
 });
 
+describe('jednostranný code', () => {
+  it('kód jen na jedné straně neblokuje shodu, rozdílný kód ano', () => {
+    const a = parseOfferName('Rozpěrka výstupní hřídele Babetta 210, 225', { shopId: 'javarna' });
+    const b = parseOfferName('Rozpěrka výstupní hřídele BABETTA 210, 225 (21017096)  *M', {
+      shopId: 'motomax',
+    });
+    expect(b.variant.code).toBe('21017096');
+    expect(compareVariants(a.variant, b.variant)).toEqual({ conflicts: [], oneSided: [] });
+    const c = parseOfferName('Rozpěrka výstupní hřídele Babetta 210, 225 (21017099)', {
+      shopId: 'motokramek',
+    });
+    expect(compareVariants(c.variant, b.variant).conflicts).toEqual(['code']);
+  });
+
+  it('pár s kódem jen na jedné straně je A', () => {
+    const result = findClusterPairs([
+      src('javarna', 'Rozpěrka výstupní hřídele Babetta 210, 225', 40, ['babetta-210']),
+      src('motomax', 'Rozpěrka výstupní hřídele BABETTA 210, 225 (21017096)  *M', 35, [
+        'babetta-210',
+      ]),
+    ]);
+    expect(result.countA).toBe(1);
+  });
+});
+
 describe('nejednoznačnost (ambiguous)', () => {
   it('víc rozdílných partnerů z jednoho shopu -> všechny páry nabídky jdou do B', () => {
     const result = findClusterPairs([
       src('jawa-korda', 'Pružina spojky Jawa Pérák 12', 100, ['perak-350']),
-      src('motomax', 'Pružina spojky JAWA 350 Pérák (standard)', 100, ['perak-350']),
-      src('motomax', 'Pružina spojky JAWA 350 Pérák (tuning)', 100, ['perak-350']),
+      src('motomax', 'Pružina spojky JAWA 350 Pérák', 100, ['perak-350']),
+      src('motomax', 'Pružina spojky JAWA 250, 350 Pérák', 100, ['perak-250', 'perak-350']),
     ]);
     expect(result.countA).toBe(0);
     expect(result.countB).toBe(2);
@@ -218,6 +243,28 @@ describe('nejednoznačnost (ambiguous)', () => {
     expect(result.pairs.every((p) => p.reasons.includes('ambiguous'))).toBe(true);
     expect(result.byBasis.model).toEqual({ A: 0, B: 2 });
     expect(result.clusters).toEqual([]);
+  });
+
+  it('partneři s rozdílnou poznámkou (note) jsou jiný díl -> nejednoznačné, B', () => {
+    const result = findClusterPairs([
+      src('jawa-korda', 'Pružina spojky Jawa Pérák 12', 100, ['perak-350']),
+      src('motomax', 'Pružina spojky JAWA 350 Pérák (standard)', 100, ['perak-350']),
+      src('motomax', 'Pružina spojky JAWA 350 Pérák (tuning)', 100, ['perak-350']),
+    ]);
+    expect(result.ambiguousItems).toBe(1);
+    expect(result.countA).toBe(0);
+    expect(result.clusters).toEqual([]);
+  });
+
+  it('partneři se shodnou poznámkou se spojí do jednoho shluku', () => {
+    const result = findClusterPairs([
+      src('jawa-korda', 'Pružina spojky Jawa Pérák 12', 100, ['perak-350']),
+      src('motomax', 'Pružina spojky JAWA 350 Pérák (tuning)', 100, ['perak-350']),
+      src('motomax', 'Pružina spojky JAWA 350 Pérák (tuning)  *M', 120, ['perak-350']),
+    ]);
+    expect(result.ambiguousItems).toBe(0);
+    expect(result.clusters).toHaveLength(1);
+    expect(result.clusters[0].items).toHaveLength(3);
   });
 
   it('partneři lišící se jen tagy a cenou jsou v pořádku (A zůstává)', () => {
@@ -317,7 +364,7 @@ describe('shluky A a pořadí B', () => {
     const r = findClusterPairs([
       src('javarna', 'Kryt řetězu horní Jawa Pionýr 20', 100, ['pionyr-20']),
       src('motomax', 'Kryt řetězu JAWA 50 - 20  *M', 500, ['pionyr-20']),
-      src('motokramek', 'Kryt řetězu plastový Jawa Pionýr 20', 100, ['pionyr-20']),
+      src('motokramek', 'Kryt řetězu ochranný Jawa Pionýr 20', 100, ['pionyr-20']),
       src('jawa-korda', 'Kryt řetězu Jawa Pionýr 20', 100, ['pionyr-20']),
     ]);
     const ranked = rankB(r.pairs).map((p) => [

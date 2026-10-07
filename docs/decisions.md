@@ -172,3 +172,15 @@ značky/přezdívky) v `itemQuality.ts`; literatura (katalog, příručka) a ná
 zůstávají. Pending → ignored se dělá až po schválení seznamu
 (`scripts/preview-quality-ignored.ts`, `--apply`), seznam je v
 `docs/reports/quality-ignored-preview-2026-10-01.md`.
+
+**2026-10-07 – zpřesnění shlukování dílů:** (1) `part_models` dílu se berou jen
+z nabídek s `model_match_level='type'` (celé nabídky, ne jen řádky type), jsou-li
+ve shluku; jinak sjednocení všech. (2) Kód (`variant.code`) jen na jedné straně
+párování neblokuje (rozdílný kód na obou stranách ano); do `variant` dílu se
+kód dává jen když ho mají všechny nabídky. (3) Nejednoznačnost: partneři z jednoho
+shopu, kteří jsou mezi sebou stejný díl (partType, varianta, modely a shodná `note`,
+nebo ji nemá žádný), se spojí do jednoho shluku; rozdílná `note` = jiný díl, shluk
+zůstává nejednoznačný (B). (4) `parseOfferName`: nový atribut
+`variant.material` (guma, kůže, ocel, hliník, plast, bronz, …) jen z konce názvu
+nebo ze závorky; nové barvy (béžová, rudá, tyrkysová, černo-…; víc barev se
+spojí `+`). Dry-run nad DB: `docs/reports/parts-write-dry-run-2026-10-07.md`.
