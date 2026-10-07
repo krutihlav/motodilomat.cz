@@ -1,0 +1,56 @@
+name: Zápis dílů ze shluků A (parts)
+
+# Jen ruční spuštění. Dvoufázově:
+#  1) confirm_write=false (výchozí) -> jen dry-run, do logu vypíše seznam dílů, nic se nezapíše,
+#  2) po kontrole seznamu znovu s confirm_write=true -> job write zapíše parts, part_models
+#     a shop_products.part_id (match_status=auto). Vyžaduje migraci 015.
+# Skript je idempotentní, při pádu stačí pustit znovu.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_write:
+        description: 'Zapsat díly do DB (až po kontrole seznamu z dry-runu)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Seznam dílů (dry-run, bez --write)
+        run: npx tsx scripts/write-parts.ts
+
+  write:
+    needs: dry-run
+    if: ${{ inputs.confirm_write }}
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Zápis (--write)
+        run: npx tsx scripts/write-parts.ts --write

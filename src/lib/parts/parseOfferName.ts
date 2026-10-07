@@ -32,6 +32,8 @@ export type OfferVariant = {
   ref: string | null;
   /** Slova za s/se/včetně/bez: "s:matic", "bez:drzak" (stemované). Víc hodnot oddělených mezerou. */
   with: string | null;
+  /** Provedení "1.typ" / "2.typ" -> "1" / "2". */
+  version: string | null;
   /** Nerozpoznaný obsah závorek (tuning, rele samostatne). Mezi shopy se neporovnává. */
   note: string | null;
   /** Kódy s číslicí bez teček a mezer (2926, 2924h, sha1616g, phbg19ds, f-876). Víc hodnot oddělených mezerou. */
@@ -461,8 +463,13 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
     // kódy karburátorů: "PHBG 19DS" -> phbg19ds, "SHA 16.16G" -> sha16.16g
     .replace(/(?<![a-z])(phbg|sha)\s+(?=\d)/g, '$1');
 
+  // provedení: "1.typ", "2. typ", "(1 typ)" (ne "typ 550" ani "Jawa 50 typ")
+  let r = take(text, /(?<![\d.,])(\d)\s*\.?\s*typ(?![a-z])/g);
+  text = r.text;
+  const version = r.matches.length > 0 ? r.matches[0][1] : null;
+
   // 3) fráze
-  let r = take(text, /bez povrchove upravy/g);
+  r = take(text, /bez povrchove upravy/g);
   text = r.text;
   const rawFinishPhrase = r.matches.length > 0;
 
@@ -753,6 +760,7 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
       pack,
       size,
       ref: refs.size > 0 ? [...refs].sort().join(' ') : null,
+      version,
       with: withTokens.size > 0 ? [...withTokens].sort().join(' ') : null,
       note: noteWords.length > 0 ? [...new Set(noteWords)].join(' ') : null,
       code: codes.size > 0 ? [...codes].sort().join(' ') : null,
