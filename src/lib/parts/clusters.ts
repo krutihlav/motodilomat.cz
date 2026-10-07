@@ -15,6 +15,8 @@ export type ClusterSource = {
   categoryText?: string | null;
   /** shop_products.match_status a part_id, jen pro zápis dílů */
   matchStatus?: string | null;
+  /** shop_products.model_match_level ('type' | 'nickname' | ...), jen pro zápis dílů (part_models) */
+  modelMatchLevel?: string | null;
   partId?: string | null;
 };
 
@@ -81,6 +83,7 @@ export const VARIANT_ATTRIBUTES: (keyof OfferVariant)[] = [
   'position',
   'finish',
   'color',
+  'material',
   'teeth',
   'pack',
   'size',
@@ -120,7 +123,8 @@ function sameSet<T>(a: Set<T>, b: Set<T>): boolean {
 
 /**
  * Porovná dvě varianty. conflicts = atributy, které mají obě strany a hodnoty se liší;
- * oneSided = atributy, které má jen jedna strana. dimension se porovnává jako množina čísel,
+ * oneSided = atributy, které má jen jedna strana (kromě code: kód jen na jedné straně shodu
+ * neblokuje, blokuje jen rozdílný kód na obou stranách). dimension se porovnává jako množina čísel,
  * ref a code jako množina tokenů.
  */
 export function compareVariants(
@@ -134,7 +138,7 @@ export function compareVariants(
     const vb = b[key];
     if (va === null && vb === null) continue;
     if (va === null || vb === null) {
-      oneSided.push(key);
+      if (key !== 'code') oneSided.push(key);
       continue;
     }
     const equal =
@@ -272,16 +276,14 @@ export function findClusterPairs(
   return result;
 }
 
-/** Jsou dvě nabídky "totéž": stejný partType, shodná varianta (bez chybějících/konfliktních atributů) i poznámka? */
+/**
+ * Jsou dvě nabídky "totéž": stejný partType, shodná varianta (bez chybějících/konfliktních atributů)
+ * a stejná sada modelů? Poznámka (note) se neporovnává, stejně jako mezi shopy.
+ */
 function sameOffer(x: ClusterItem, y: ClusterItem): boolean {
   if (x.parsed.partType !== y.parsed.partType) return false;
   const { conflicts, oneSided } = compareVariants(x.parsed.variant, y.parsed.variant);
-  return (
-    conflicts.length === 0 &&
-    oneSided.length === 0 &&
-    x.parsed.variant.note === y.parsed.variant.note &&
-    sameModels(x, y)
-  );
+  return conflicts.length === 0 && oneSided.length === 0 && sameModels(x, y);
 }
 
 /** Stejná sada modelů (u nabídek bez modelu stejný fit_generic). */
@@ -293,8 +295,9 @@ function sameModels(x: ClusterItem, y: ClusterItem): boolean {
 
 /**
  * Nejednoznačnost: má-li nabídka v A víc partnerů z jednoho shopu a ti se mezi sebou liší
- * (partType, varianta, note nebo sada modelů), jdou všechny její páry z A do B (důvod ambiguous).
- * Partneři lišící se jen tagy a cenou jsou v pořádku.
+ * (partType, varianta nebo sada modelů), jdou všechny její páry z A do B (důvod ambiguous).
+ * Partneři, kteří jsou mezi sebou stejný díl (lišící se jen tagy, poznámkou a cenou), se
+ * spojí přes nabídku do jednoho shluku.
  */
 function markAmbiguous(result: ClusterResult): void {
   const partners = new Map<string, Map<string, ClusterItem[]>>();

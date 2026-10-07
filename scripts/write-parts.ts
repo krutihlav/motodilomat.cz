@@ -47,7 +47,9 @@ export async function loadSources(client: SupabaseClient): Promise<ClusterSource
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await client
       .from('shop_products')
-      .select('id, shop_id, name, price, fit_generic, category_text, match_status, part_id')
+      .select(
+        'id, shop_id, name, price, fit_generic, category_text, match_status, part_id, model_match_level',
+      )
       .in('match_status', WRITABLE_STATUSES)
       .order('id')
       .range(from, from + PAGE_SIZE - 1);
@@ -63,6 +65,7 @@ export async function loadSources(client: SupabaseClient): Promise<ClusterSource
         categoryText: (row.category_text as string | null) ?? null,
         matchStatus: row.match_status as string,
         partId: (row.part_id as string | null) ?? null,
+        modelMatchLevel: (row.model_match_level as string | null) ?? null,
       });
     }
     if (!data || data.length < PAGE_SIZE) break;

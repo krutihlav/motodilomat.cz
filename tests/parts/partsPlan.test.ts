@@ -183,6 +183,37 @@ describe('buildPartPlans', () => {
     expect(withVariant[0].variant).toEqual({ dimension: '14.1,38.75' });
   });
 
+  it('modely dílu: jsou-li nabídky s úrovní type, jen z nich (celé nabídky); jinak ze všech', () => {
+    const list = (levels: [string | null, string | null]) => [
+      src('jawa-korda', 'Šroub setrvačníku Babetta 207', 40, ['babetta-207'], {
+        modelMatchLevel: levels[0],
+      }),
+      src('motomax', 'Šroub setrvačníku BABETTA 228, 207  *M', 60, ['babetta-207', 'babetta-228'], {
+        modelMatchLevel: levels[1],
+      }),
+    ];
+    const models = (levels: [string | null, string | null]) =>
+      buildPartPlans(findClusterPairs(list(levels)).clusters)[0].models;
+    expect(models(['type', 'nickname'])).toEqual(['babetta-207']);
+    expect(models(['nickname', 'type'])).toEqual(['babetta-207', 'babetta-228']);
+    expect(models(['type', 'type'])).toEqual(['babetta-207', 'babetta-228']);
+    expect(models(['nickname', 'nickname'])).toEqual(['babetta-207', 'babetta-228']);
+    expect(models([null, null])).toEqual(['babetta-207', 'babetta-228']);
+  });
+
+  it('kód jen na části nabídek není ve variantě dílu', () => {
+    const plans = buildPartPlans(
+      findClusterPairs([
+        src('javarna', 'Rozpěrka výstupní hřídele Babetta 210, 225', 40, ['babetta-210']),
+        src('motomax', 'Rozpěrka výstupní hřídele BABETTA 210, 225 (21017096)  *M', 35, [
+          'babetta-210',
+        ]),
+      ]).clusters,
+    );
+    expect(plans).toHaveLength(1);
+    expect(plans[0].variant.code).toBeUndefined();
+  });
+
   it('nabídky mimo povolené stavy (manual, ignored) se do dílů nedostanou', () => {
     const list = [
       src('jawa-korda', 'Šroub setrvačníku Babetta 207', 40, ['babetta-207'], {

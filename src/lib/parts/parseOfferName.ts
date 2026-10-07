@@ -24,6 +24,8 @@ export type OfferVariant = {
   position: Position | null;
   finish: string | null;
   color: string | null;
+  /** Materiál na konci názvu / v závorce: "rubber", "leather", "aluminium+plastic" (víc hodnot seřazeno, spojeno "+"). */
+  material: string | null;
   teeth: number | null;
   /** "36ks", "sada" (jen za modelem nebo v závorce; "Sada šroubů" je součást partType), "complete" (úpl./kompletní) */
   pack: string | null;
@@ -198,6 +200,9 @@ const FINISH_WORDS: [RegExp, string][] = [
 
 const COLOR_STEMS: [string, string][] = [
   ['cern', 'black'],
+  ['bezov', 'beige'],
+  ['rud', 'red'],
+  ['tyrkys', 'turquoise'],
   ['sed', 'grey'],
   ['bil', 'white'],
   ['cerven', 'red'],
@@ -214,10 +219,52 @@ const COLOR_STEMS: [string, string][] = [
 const COLOR_ENDINGS = /^(y|a|e|ou|ych|eho|ym)$/;
 
 function colorOf(word: string): string | null {
+  if (word === 'cerno') return 'black';
   for (const [stem, color] of COLOR_STEMS) {
     if (word.startsWith(stem) && COLOR_ENDINGS.test(word.slice(stem.length))) return color;
   }
   return null;
+}
+
+/**
+ * Materiál: bere se jen na konci názvu (za posledním slovem partType) nebo v závorce.
+ * Na začátku je součástí dílu ("Guma nádrže", "Plech sedla", "Plastová krytka").
+ */
+const MATERIAL_WORDS: [RegExp, string][] = [
+  [/^(alu|aluminium|aluminiovy|hlinik\w*|slitin\w*)$/, 'aluminium'],
+  [/^plast\w*$/, 'plastic'],
+  [/^bronz\w*$/, 'bronze'],
+  [/^(guma|gumov\w*)$/, 'rubber'],
+  [/^ocel\w*$/, 'steel'],
+  [/^(kuze|kozen\w*)$/, 'leather'],
+  [/^mosaz\w*$/, 'brass'],
+  [/^bakelit\w*$/, 'bakelite'],
+  [/^carbon$/, 'carbon'],
+  [/^laminat\w*$/, 'laminate'],
+  [/^textil\w*$/, 'textile'],
+];
+
+function materialOf(word: string): string | null {
+  return MATERIAL_WORDS.find(([re]) => re.test(word))?.[1] ?? null;
+}
+
+/** Slovo, které je v hlavní smyčce rozpoznané jako varianta/tag (a tedy nekončí "chvost" názvu). */
+function isVariantWord(word: string): boolean {
+  return (
+    word === 'l' ||
+    word === 'p' ||
+    SIDE_LEFT.test(word) ||
+    SIDE_RIGHT.test(word) ||
+    ['sada', 'sady', 'set', 'standard', 'motomax'].includes(word) ||
+    colorOf(word) !== null ||
+    SIZE_STEMS.some(([re]) => re.test(word)) ||
+    POSITION_PREFIX.some(([re]) => re.test(word)) ||
+    FINISH_WORDS.some(([re]) => re.test(word)) ||
+    /^(kompletni|upl\w*)$/.test(word) ||
+    REF_BRANDS.has(word) ||
+    PLAIN_BRANDS.has(word) ||
+    TAG_WORDS.some(([re]) => re.test(word))
+  );
 }
 
 const SIZE_STEMS: [RegExp, Size][] = [
@@ -616,7 +663,7 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
   const consumed = new Set<number>();
   const positions = new Set<PositionName>();
   let finish: string | null = rawFinishPhrase ? 'raw' : null;
-  let color: string | null = null;
+  const colors = new Set<string>();
   let size: Size | null = null;
   let complete = false;
 
@@ -672,6 +719,27 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
     }
   });
 
+  // materiál: slova v závorce a souvislý "chvost" za posledním slovem partType
+  const parenText = text
+    .replace(/\([^)]*\)/g, (m) => ' '.repeat(m.length))
+    .replace(/\([^)]*$/g, (m) => ' '.repeat(m.length));
+  const materialIdx = new Set<number>();
+  let inTail = true;
+  for (let i = words.length - 1; i >= 0; i -= 1) {
+    const { word, at } = words[i];
+    const material = materialOf(word);
+    if (parenText[at] === ' ') {
+      if (material) materialIdx.add(i);
+      continue;
+    }
+    if (withIdx.has(i) || word.length < 2 || STOPWORDS.has(word) || VEHICLE_WORDS.has(word)) {
+      continue;
+    }
+    if (inTail && material) materialIdx.add(i);
+    else if (!isVariantWord(word)) inTail = false;
+  }
+  const materials = new Set<string>();
+
   const noteExtra = new Set<string>();
 
   words.forEach(({ word, at }, i) => {
@@ -692,8 +760,10 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
       pack ??= 'sada';
     } else if (word === 'standard') {
       noteExtra.add('standard');
+    } else if (materialIdx.has(i)) {
+      materials.add(materialOf(word)!);
     } else if (colorOf(word)) {
-      color ??= colorOf(word);
+      colors.add(colorOf(word)!);
     } else if (SIZE_STEMS.some(([re]) => re.test(word))) {
       size ??= SIZE_STEMS.find(([re]) => re.test(word))![1];
     } else {
@@ -726,9 +796,7 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
     positions.size > 0 ? POSITION_ORDER.filter((name) => positions.has(name)).join('+') : null;
 
   // partType: text bez závorek, bez variant/stop/vehicle slov a čísel, stemované
-  const noParens = text
-    .replace(/\([^)]*\)/g, (m) => ' '.repeat(m.length))
-    .replace(/\([^)]*$/g, (m) => ' '.repeat(m.length));
+  const noParens = parenText;
   const typeWords = new Set<string>();
   const noteWords: string[] = [];
   words.forEach(({ word, at }, i) => {
@@ -755,7 +823,8 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
       side,
       position,
       finish,
-      color,
+      color: colors.size > 0 ? [...colors].sort().join('+') : null,
+      material: materials.size > 0 ? [...materials].sort().join('+') : null,
       teeth,
       pack,
       size,
