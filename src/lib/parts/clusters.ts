@@ -45,6 +45,10 @@ export type ClusterResult = {
   /** konflikty podle atributu (pár se počítá u každého konfliktního atributu) */
   conflictsByAttribute: Record<string, number>;
   byBasis: Record<PairBasis, { A: number; B: number }>;
+  /** zahozeno pro konflikt podle základu páru */
+  droppedByBasis: Record<PairBasis, number>;
+  /** páry se základem no_fit podle dvojice shopů ("javarna × motomax") */
+  noFitByShopPair: Record<string, { A: number; B: number }>;
 };
 
 export type ClusterOptions = {
@@ -175,6 +179,8 @@ export function findClusterPairs(
       fit_generic: { A: 0, B: 0 },
       no_fit: { A: 0, B: 0 },
     },
+    droppedByBasis: { model: 0, fit_generic: 0, no_fit: 0 },
+    noFitByShopPair: {},
   };
 
   for (const [key, members] of buckets(items)) {
@@ -193,9 +199,11 @@ export function findClusterPairs(
         seen.add(pairKey);
         result.candidates += 1;
 
+        const basis: PairBasis = isModel ? 'model' : key === 'fit|' ? 'no_fit' : 'fit_generic';
         const { conflicts, oneSided } = compareVariants(a.parsed.variant, b.parsed.variant);
         if (conflicts.length > 0) {
           result.droppedConflict += 1;
+          result.droppedByBasis[basis] += 1;
           for (const attribute of conflicts) {
             result.conflictsByAttribute[attribute] =
               (result.conflictsByAttribute[attribute] ?? 0) + 1;
@@ -212,7 +220,6 @@ export function findClusterPairs(
         if (ratio === null) reasons.push('cena chybí');
         else if (ratio > maxPriceRatio) reasons.push(`cena ×${ratio.toFixed(1)}`);
 
-        const basis: PairBasis = isModel ? 'model' : key === 'fit|' ? 'no_fit' : 'fit_generic';
         const shared = isModel
           ? [...new Set(a.modelIds)].filter((id) => new Set(b.modelIds).has(id))
           : [key.slice('fit|'.length)];
@@ -229,6 +236,11 @@ export function findClusterPairs(
         if (isA) result.countA += 1;
         else result.countB += 1;
         result.byBasis[basis][isA ? 'A' : 'B'] += 1;
+        if (basis === 'no_fit') {
+          const shopPair = [a.shopId, b.shopId].sort().join(' × ');
+          const entry = (result.noFitByShopPair[shopPair] ??= { A: 0, B: 0 });
+          entry[isA ? 'A' : 'B'] += 1;
+        }
       }
     }
   }
@@ -263,16 +275,43 @@ export function renderClusterReport(
   out.push(`- A: **${result.countA}**`);
   out.push(`- B: **${result.countB}**`);
   out.push(`- zahozeno pro konflikt varianty: **${result.droppedConflict}**`);
-  const conflicts = Object.entries(result.conflictsByAttribute)
-    .sort((x, y) => y[1] - x[1])
-    .map(([key, n]) => `${key} ${n}`)
-    .join(', ');
-  out.push(`  - podle atributu: ${conflicts || '—'}`);
   out.push(
     `- podle základu: ${(['model', 'fit_generic', 'no_fit'] as const)
       .map((b) => `${b} A ${result.byBasis[b].A} / B ${result.byBasis[b].B}`)
       .join('; ')}`,
   );
+
+  out.push('', '## Zahozeno pro konflikt varianty podle atributu', '');
+  out.push(
+    `Pár se počítá u každého konfliktního atributu (součet může být větší než ${result.droppedConflict}).`,
+    '',
+    '| atribut | párů |',
+    '|---|---:|',
+  );
+  const conflicts = Object.entries(result.conflictsByAttribute).sort(
+    (x, y) => y[1] - x[1] || x[0].localeCompare(y[0]),
+  );
+  for (const [attribute, n] of conflicts) out.push(`| ${attribute} | ${n} |`);
+  if (conflicts.length === 0) out.push('| — | 0 |');
+  out.push(
+    '',
+    `Zahozeno podle základu: ${(['model', 'fit_generic', 'no_fit'] as const)
+      .map((b) => `${b} ${result.droppedByBasis[b]}`)
+      .join(', ')}`,
+  );
+
+  const noFit = Object.entries(result.noFitByShopPair).sort(
+    (x, y) => y[1].A + y[1].B - (x[1].A + x[1].B) || x[0].localeCompare(y[0]),
+  );
+  out.push(
+    '',
+    `## no_fit: páry bez modelu i bez fit_generic (${result.byBasis.no_fit.A + result.byBasis.no_fit.B})`,
+    '',
+    '| shopy | A | B | celkem |',
+    '|---|---:|---:|---:|',
+  );
+  for (const [shops, n] of noFit) out.push(`| ${shops} | ${n.A} | ${n.B} | ${n.A + n.B} |`);
+  if (noFit.length === 0) out.push('| — | 0 | 0 | 0 |');
 
   const aPairs = result.pairs
     .filter((p) => p.class === 'A')

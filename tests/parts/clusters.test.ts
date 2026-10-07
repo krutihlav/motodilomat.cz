@@ -162,6 +162,48 @@ describe('findClusterPairs', () => {
   });
 });
 
+describe('no_fit a konflikty podle atributu', () => {
+  const data = [
+    src('jawa-korda', 'Žárovka 12V 10W', 20, [], null),
+    src('motomax', 'Žárovka 12V 10W', 25, [], []),
+    src('motokramek', 'Žárovka 12V 10W', 22, [], null),
+    src('javarna', 'Žárovka 6V 10W', 22, [], null),
+    src('motomax', 'Píst Jawa Pionýr 20 38,75 / 14,1', 200),
+    src('javarna', 'Píst Jawa Pionýr 20 38,50 / 14,1', 200),
+  ];
+  const result = findClusterPairs(data);
+
+  it('počítá no_fit páry po dvojicích shopů (A i B) a konflikty po základech', () => {
+    expect(result.byBasis.no_fit).toEqual({ A: 3, B: 0 });
+    expect(result.noFitByShopPair).toEqual({
+      'jawa-korda × motokramek': { A: 1, B: 0 },
+      'jawa-korda × motomax': { A: 1, B: 0 },
+      'motokramek × motomax': { A: 1, B: 0 },
+    });
+    // 6V proti 12V: konflikt voltage u tří no_fit párů; písty: konflikt dimension u modelu
+    expect(result.conflictsByAttribute).toEqual({ voltage: 3, dimension: 1 });
+    expect(result.droppedByBasis).toEqual({ model: 1, fit_generic: 0, no_fit: 3 });
+    expect(result.droppedConflict).toBe(4);
+  });
+
+  it('report má tabulku konfliktů po atributech a sekci no_fit po shopech', () => {
+    const md = renderClusterReport(result);
+    expect(md).toContain('## Zahozeno pro konflikt varianty podle atributu');
+    expect(md).toContain('| voltage | 3 |');
+    expect(md).toContain('| dimension | 1 |');
+    expect(md).toContain('Zahozeno podle základu: model 1, fit_generic 0, no_fit 3');
+    expect(md).toContain('## no_fit: páry bez modelu i bez fit_generic (3)');
+    expect(md).toContain('| jawa-korda × motomax | 1 | 0 | 1 |');
+    expect(md).toContain('| motokramek × motomax | 1 | 0 | 1 |');
+  });
+
+  it('bez no_fit párů vypíše prázdnou tabulku', () => {
+    const md = renderClusterReport(findClusterPairs([src('motomax', 'Píst Jawa Pionýr 20', 100)]));
+    expect(md).toContain('## no_fit: páry bez modelu i bez fit_generic (0)');
+    expect(md).toContain('| — | 0 | 0 | 0 |');
+  });
+});
+
 describe('renderClusterReport', () => {
   const result = findClusterPairs([
     src('jawa-korda', 'Šroub setrvačníku Babetta 207', 40, ['babetta-207']),
