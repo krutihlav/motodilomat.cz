@@ -184,3 +184,32 @@ zůstává nejednoznačný (B). (4) `parseOfferName`: nový atribut
 `variant.material` (guma, kůže, ocel, hliník, plast, bronz, …) jen z konce názvu
 nebo ze závorky; nové barvy (béžová, rudá, tyrkysová, černo-…; víc barev se
 spojí `+`). Dry-run nad DB: `docs/reports/parts-write-dry-run-2026-10-07.md`.
+
+## 2026-10-21 – Noční interní import (`internal_sync`) pro PureBikes Dílna
+
+**Rozhodnutí (Adam):** Dokud Motodílomat není veřejný, stahují se ceny ze všech
+dosažitelných e-shopů **každou noc interně** – bez souhlasu e-shopu, protože se
+nic nezveřejňuje. Mění se tím rozhodnutí z 2026-09-30 („plánovaný `--internal`
+import se nenasazuje“).
+
+- Nový sloupec `shops.internal_sync` (migrace `017_internal_sync.sql`) = shop jde
+  do noční interní synchronizace. **Není to souhlas e-shopu** – na veřejném webu
+  dál platí jen `feed_permission` / `crawl_enabled`.
+- Workflow `import-internal-nightly.yml` (0:15 UTC): feed shopy celý feed,
+  crawl shopy `--refresh-known-urls` (aktuální ceny a sklad známých produktů),
+  v neděli navíc průchod sitemapou kvůli novým produktům. Na konci
+  `write-product-models.ts --write`, aby nové položky měly vazby na modely.
+  Sdílí `concurrency: import-crawl` s denním crawlem. Rate limit 1 req/3 s a
+  robots.txt platí dál.
+- Zapnuto pro `motomax` (Google feed), `motokramek`, `jawa-korda`, `motojelinek`.
+  `javarna` ne (ETIMEDOUT z GH Actions), `fichtlkramek`/`mvdily`/`partdeck` zatím
+  nemají použitelný zdroj.
+- Data zůstávají `is_public = false`. Čte je interně aplikace **PureBikes Dílna**
+  (dilna.purebikes.cz) přes funkci `dilna_part_prices` (migrace 016, jen čtení,
+  token z Vaultu `dilna_token`) – návrh ceny dílu ve vyúčtování.
+- **Před spuštěním veřejného webu** je potřeba souhlas e-shopů (feed_permission /
+  crawl_enabled) – internal_sync na to nemá vliv.
+
+**Nový e-shop:** vložit řádek do `shops` (`feed_url` + `feed_format`, nebo
+`base_url` se `source_type='crawl'`), ověřit `probe-shops.yml` a jednorázově
+`internal-import-verified-shops.yml` (s `shop_id`), pak `internal_sync = true`.

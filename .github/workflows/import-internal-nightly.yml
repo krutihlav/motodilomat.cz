@@ -1,0 +1,84 @@
+name: Noční interní import cen (internal_sync)
+
+# Každou noc stáhne všechny shopy s shops.internal_sync=true v režimu --internal
+# (bez ohledu na souhlas e-shopu; data zůstávají neveřejná). Rozhodnutí viz
+# docs/decisions.md 2026-10-21. Data čte interně PureBikes Dílna (dilna_part_prices).
+#  - feed shopy: celý feed
+#  - crawl shopy: každou noc refresh známých URL (ceny + sklad), v neděli navíc
+#    průchod sitemapou kvůli novým produktům
+#  - na konci přepočet vazeb produkt-model (idempotentní), aby nové položky šly najít podle modelu
+on:
+  schedule:
+    - cron: '15 0 * * *' # 2:15 letního / 1:15 zimního času
+  workflow_dispatch:
+    inputs:
+      discover:
+        description: 'U crawl shopů projít i sitemapu (hledání nových produktů)'
+        type: boolean
+        default: false
+      max_requests:
+        description: 'Strop requestů na crawl shop při průchodu sitemapou'
+        required: false
+        default: '600'
+        type: string
+
+# Sdílí skupinu s import-crawl.yml - dva souběžné crawly téhož webu by porušily rate limit.
+concurrency:
+  group: import-crawl
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      DISCOVER: ${{ inputs.discover }}
+      MAX_REQUESTS: ${{ inputs.max_requests }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Import shopů s internal_sync=true
+        run: |
+          set -e
+          mapfile -t SHOPS < <(npx tsx scripts/list-internal-shops.ts)
+          if [ "${#SHOPS[@]}" -eq 0 ]; then
+            echo "žádné shopy s internal_sync=true"
+            exit 0
+          fi
+
+          # v neděli (nebo ručně s discover=true) i průchod sitemapou kvůli novým produktům
+          DISCOVER_NOW=false
+          if [ "$DISCOVER" = "true" ] || [ "$(date -u +%u)" = "7" ]; then DISCOVER_NOW=true; fi
+
+          status=0
+          for line in "${SHOPS[@]}"; do
+            shop="${line%%$'\t'*}"; type="${line#*$'\t'}"
+            echo "::group::$shop ($type)"
+            if [ "$type" = "feed" ]; then
+              npx tsx scripts/import-feed.ts "$shop" --internal || status=1
+            else
+              npx tsx scripts/import-feed.ts "$shop" --internal --refresh-known-urls --max-requests="${MAX_REQUESTS:-600}" || status=1
+              if [ "$DISCOVER_NOW" = "true" ]; then
+                npx tsx scripts/import-feed.ts "$shop" --internal --max-requests="${MAX_REQUESTS:-600}" || status=1
+              fi
+            fi
+            npx tsx scripts/summarize-shop-import.ts "$shop" || true
+            echo "::endgroup::"
+          done
+          exit $status
+
+      - name: Vazby produkt-model pro nové a změněné položky
+        if: ${{ always() }}
+        run: npx tsx scripts/write-product-models.ts --write
