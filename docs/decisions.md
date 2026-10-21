@@ -201,9 +201,15 @@ import se nenasazuje“).
   `write-product-models.ts --write`, aby nové položky měly vazby na modely.
   Sdílí `concurrency: import-crawl` s denním crawlem. Rate limit 1 req/3 s a
   robots.txt platí dál.
-- Zapnuto pro `motomax` (Google feed), `motokramek`, `jawa-korda`, `motojelinek`.
-  `javarna` ne (ETIMEDOUT z GH Actions), `fichtlkramek`/`mvdily`/`partdeck` zatím
-  nemají použitelný zdroj.
+- Zapnuto pro `motomax` (Google feed), `motokramek`, `jawa-korda`, `motojelinek`
+  a po probe 2026-10-21 (migrace `020`) i `birdgarage` (veřejný Shoptet
+  `/google.xml`), `veteranmoto`, `jawasvet`, `motopisty`. Nezapnuto: `javarna`
+  (ETIMEDOUT z GH Actions), `jawashop` (ceny v EUR – importér počítá s CZK),
+  `retrotechna` (bez strukturovaných dat), `fichtlkramek`/`mvdily`/`partdeck`
+  (sitemapa bez produktů).
+- Každý shop běží ve vlastním jobu (matrix) souběžně – crawl velkých shopů
+  (tisíce URL × 3 s) by jinak noc nestihl. Výsledky `probe-shops.ts` se nově
+  ukládají i do tabulky `shop_probes` (migrace `019`).
 - Data zůstávají `is_public = false`. Čte je interně aplikace **PureBikes Dílna**
   (dilna.purebikes.cz) přes funkci `dilna_part_prices` (migrace 016, jen čtení,
   token z Vaultu `dilna_token`) – návrh ceny dílu ve vyúčtování.

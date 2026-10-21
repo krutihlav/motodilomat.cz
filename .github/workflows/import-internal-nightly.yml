@@ -4,9 +4,11 @@ name: Noční interní import cen (internal_sync)
 # (bez ohledu na souhlas e-shopu; data zůstávají neveřejná). Rozhodnutí viz
 # docs/decisions.md 2026-10-21. Data čte interně PureBikes Dílna (dilna_part_prices).
 #  - feed shopy: celý feed
-#  - crawl shopy: každou noc refresh známých URL (ceny + sklad), v neděli navíc
-#    průchod sitemapou kvůli novým produktům
-#  - na konci přepočet vazeb produkt-model (idempotentní), aby nové položky šly najít podle modelu
+#  - crawl shopy: refresh známých URL (ceny + sklad); v neděli (nebo discover=true)
+#    navíc průchod sitemapou kvůli novým produktům
+#  - každý shop běží ve vlastním jobu souběžně (různé domény, rate limit 1 req/3 s
+#    na doménu platí dál) - velké crawl shopy by jinak noc nestihly
+#  - na konci přepočet vazeb produkt-model (idempotentní)
 on:
   schedule:
     - cron: '15 0 * * *' # 2:15 letního / 1:15 zimního času
@@ -16,10 +18,14 @@ on:
         description: 'U crawl shopů projít i sitemapu (hledání nových produktů)'
         type: boolean
         default: false
+      shop_id:
+        description: 'Jen jeden shop (prázdné = všechny s internal_sync)'
+        required: false
+        type: string
       max_requests:
         description: 'Strop requestů na crawl shop při průchodu sitemapou'
         required: false
-        default: '600'
+        default: '5000'
         type: string
 
 # Sdílí skupinu s import-crawl.yml - dva souběžné crawly téhož webu by porušily rate limit.
@@ -30,55 +36,80 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
 jobs:
-  import:
+  list:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
-    env:
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      DISCOVER: ${{ inputs.discover }}
-      MAX_REQUESTS: ${{ inputs.max_requests }}
+    outputs:
+      shops: ${{ steps.list.outputs.shops }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
       - run: npm ci
-
-      - name: Import shopů s internal_sync=true
+      - id: list
+        env:
+          ONLY: ${{ inputs.shop_id }}
         run: |
           set -e
-          mapfile -t SHOPS < <(npx tsx scripts/list-internal-shops.ts)
-          if [ "${#SHOPS[@]}" -eq 0 ]; then
-            echo "žádné shopy s internal_sync=true"
-            exit 0
-          fi
+          json=$(npx tsx scripts/list-internal-shops.ts | awk -F'\t' -v only="$ONLY" '
+            only == "" || $1 == only { printf "%s{\"id\":\"%s\",\"type\":\"%s\"}", (n++ ? "," : ""), $1, $2 }
+            END { }' )
+          echo "shops=[$json]" >> "$GITHUB_OUTPUT"
+          echo "shops=[$json]"
 
-          # v neděli (nebo ručně s discover=true) i průchod sitemapou kvůli novým produktům
-          DISCOVER_NOW=false
-          if [ "$DISCOVER" = "true" ] || [ "$(date -u +%u)" = "7" ]; then DISCOVER_NOW=true; fi
-
-          status=0
-          for line in "${SHOPS[@]}"; do
-            shop="${line%%$'\t'*}"; type="${line#*$'\t'}"
-            echo "::group::$shop ($type)"
-            if [ "$type" = "feed" ]; then
-              npx tsx scripts/import-feed.ts "$shop" --internal || status=1
-            else
-              npx tsx scripts/import-feed.ts "$shop" --internal --refresh-known-urls --max-requests="${MAX_REQUESTS:-600}" || status=1
-              if [ "$DISCOVER_NOW" = "true" ]; then
-                npx tsx scripts/import-feed.ts "$shop" --internal --max-requests="${MAX_REQUESTS:-600}" || status=1
-              fi
+  import:
+    needs: list
+    if: ${{ needs.list.outputs.shops != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shop: ${{ fromJson(needs.list.outputs.shops) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Import ${{ matrix.shop.id }} (${{ matrix.shop.type }})
+        env:
+          SHOP: ${{ matrix.shop.id }}
+          TYPE: ${{ matrix.shop.type }}
+          DISCOVER: ${{ inputs.discover }}
+          MAX_REQUESTS: ${{ inputs.max_requests }}
+        run: |
+          set -e
+          if [ "$TYPE" = "feed" ]; then
+            npx tsx scripts/import-feed.ts "$SHOP" --internal
+          else
+            npx tsx scripts/import-feed.ts "$SHOP" --internal --refresh-known-urls
+            if [ "$DISCOVER" = "true" ] || [ "$(date -u +%u)" = "7" ]; then
+              npx tsx scripts/import-feed.ts "$SHOP" --internal --max-requests="${MAX_REQUESTS:-5000}"
             fi
-            npx tsx scripts/summarize-shop-import.ts "$shop" || true
-            echo "::endgroup::"
-          done
-          exit $status
-
-      - name: Vazby produkt-model pro nové a změněné položky
+          fi
+      - name: Souhrn
         if: ${{ always() }}
+        run: npx tsx scripts/summarize-shop-import.ts "${{ matrix.shop.id }}" || true
+
+  models:
+    needs: import
+    if: ${{ always() && needs.import.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Vazby produkt-model pro nové a změněné položky
         run: npx tsx scripts/write-product-models.ts --write
