@@ -207,6 +207,12 @@ import se nenasazuje“).
   (ETIMEDOUT z GH Actions), `jawashop` (ceny v EUR – importér počítá s CZK),
   `retrotechna` (bez strukturovaných dat), `fichtlkramek`/`mvdily`/`partdeck`
   (sitemapa bez produktů).
+- Kolo 2 (migrace `021`/`022`): zapnut `motoveterandily` (MVDILY, Shoptet,
+  ~5 000 produktů). `motoren` (motoren.sk) zakazuje crawl v robots.txt –
+  respektujeme. `4jawa` – 4jawa.cz neexistuje (DNS), čeká na správnou adresu.
+  `extremebike` bez strukturovaných dat, `motospicka`/`mototechnik` bez produktů
+  v sitemapě. Pozor: starý řádek `mvdily` (mvdily.cz) je slepý, e-shop MVDILY
+  je na motoveterandily.cz.
 - Každý shop běží ve vlastním jobu (matrix) souběžně – crawl velkých shopů
   (tisíce URL × 3 s) by jinak noc nestihl. Výsledky `probe-shops.ts` se nově
   ukládají i do tabulky `shop_probes` (migrace `019`).
