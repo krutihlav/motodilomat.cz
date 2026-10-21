@@ -346,6 +346,16 @@ async function main() {
   const markdown = renderMarkdown(results);
   console.log(markdown);
 
+  // Výsledky i do DB (shop_probes) – logy GH Actions nejsou vždy dostupné.
+  const client = createServiceRoleClient();
+  const rows = results
+    .filter((r) => shops.some((s) => s.id === r.shop.id))
+    .map((r) => ({ shop_id: r.shop.id, result: r }));
+  if (rows.length) {
+    const { error } = await client.from('shop_probes').insert(rows);
+    if (error) console.warn(`Uložení do shop_probes selhalo: ${error.message}`);
+  }
+
   const summaryPath = process.env.GITHUB_STEP_SUMMARY;
   if (summaryPath) {
     appendFileSync(summaryPath, `${markdown}\n`);
