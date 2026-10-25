@@ -33,7 +33,17 @@ jobs:
       - run: npm ci
 
       - name: Seznam dílů (dry-run, bez --write)
-        run: npx tsx scripts/write-parts.ts
+        run: |
+          set -o pipefail
+          npx tsx scripts/write-parts.ts 2>&1 | tee parts-dry-run.log
+      # Konec logu i jako anotace – čitelné přes API, i když logy nejdou stáhnout.
+      - name: Shrnutí do anotací
+        if: always()
+        run: |
+          msg=$(tail -c 3000 parts-dry-run.log 2>/dev/null | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')
+          echo "::notice title=parts dry-run (konec logu)::$msg"
+          head=$(head -c 3000 parts-dry-run.log 2>/dev/null | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')
+          echo "::notice title=parts dry-run (začátek logu)::$head"
 
   write:
     needs: dry-run
@@ -53,4 +63,11 @@ jobs:
       - run: npm ci
 
       - name: Zápis (--write)
-        run: npx tsx scripts/write-parts.ts --write
+        run: |
+          set -o pipefail
+          npx tsx scripts/write-parts.ts --write 2>&1 | tee parts-write.log
+      - name: Shrnutí do anotací
+        if: always()
+        run: |
+          msg=$(tail -c 3000 parts-write.log 2>/dev/null | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')
+          echo "::notice title=parts write (konec logu)::$msg"
