@@ -104,7 +104,10 @@ export function InternalBanner({internal}: {internal: boolean}) {
   if (!internal) return null;
   return (
     <div style={{background: '#1E1613', color: '#F6DC8A', fontSize: 13, fontWeight: 600, textAlign: 'center', padding: '6px 16px'}}>
-      Interní náhled – zobrazuje i nezveřejněné nabídky. Není to veřejný web.
+      Interní náhled – zobrazuje i nezveřejněné nabídky. Není to veřejný web. ·{' '}
+      <Link href="/interni/parovani" style={{color: '#F6DC8A', textDecoration: 'underline', textUnderlineOffset: 3}}>
+        Párování dílů
+      </Link>
     </div>
   );
 }
