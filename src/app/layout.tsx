@@ -7,6 +7,7 @@ const DESCRIPTION =
 const URL = 'https://motodilomat.cz/';
 
 export const metadata: Metadata = {
+  metadataBase: new globalThis.URL(URL),
   title: TITLE,
   description: DESCRIPTION,
   alternates: {canonical: URL},

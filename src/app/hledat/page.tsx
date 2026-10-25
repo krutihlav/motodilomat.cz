@@ -19,6 +19,7 @@ export async function generateMetadata({searchParams}: Props): Promise<Metadata>
   return {
     title: q ? `„${q}“ – hledání dílů | MotoDílomat.cz` : 'Hledání dílů | MotoDílomat.cz',
     // Výsledky hledání do vyhledávačů nepatří.
+    alternates: {canonical: '/hledat'},
     robots: catalogRobots() ?? {index: false, follow: true},
   };
 }

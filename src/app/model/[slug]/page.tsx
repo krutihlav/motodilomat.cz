@@ -24,11 +24,14 @@ export async function generateMetadata({params}: Props): Promise<Metadata> {
   return {
     title: `Díly na ${model.name} – srovnání cen | MotoDílomat.cz`,
     description: `Náhradní díly na ${model.name} ze všech specializovaných e-shopů. Porovnej ceny a dostupnost.`,
+    alternates: {canonical: `/model/${slug}`},
+    openGraph: {title: `Díly na ${model.name}`, url: `/model/${slug}`},
     robots: catalogRobots(),
   };
 }
 
 function plateNo(m: Model): string {
+  if (m.family === 'Stadion') return m.name.replace(/^Stadion\s+/, '');
   return m.type_numbers?.[0] ?? m.slug.split('-').pop()?.toUpperCase() ?? '';
 }
 

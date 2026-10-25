@@ -48,11 +48,14 @@ export async function generateMetadata({params}: Props): Promise<Metadata> {
   return {
     title: `${data.part.name} – od ${formatPrice(min)} | MotoDílomat.cz`,
     description: `${data.part.name}: ${countLabel(data.offers.length, OFFERS)} z e-shopů s díly na Jawu, ČZ, Babettu a Stadion.`,
+    alternates: {canonical: `/dil/${slug}`},
+    openGraph: {title: data.part.name, url: `/dil/${slug}`},
     robots: catalogRobots(),
   };
 }
 
 function plateNo(m: Model): string {
+  if (m.family === 'Stadion') return m.name.replace(/^Stadion\s+/, '');
   return m.type_numbers?.[0] ?? m.slug.split('-').pop()?.toUpperCase() ?? '';
 }
 

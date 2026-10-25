@@ -13,6 +13,8 @@ export function generateMetadata(): Metadata {
   return {
     title: 'Pro e-shopy | MotoDílomat.cz',
     description: 'Jak MotoDílomat zobrazuje nabídky e-shopů, jak poslat feed a jak e-shop z Motodílomatu odstranit.',
+    alternates: {canonical: '/pro-eshopy'},
+    openGraph: {title: 'Pro e-shopy | MotoDílomat.cz', url: '/pro-eshopy'},
     robots: catalogRobots(),
   };
 }

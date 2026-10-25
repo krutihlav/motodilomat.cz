@@ -9,6 +9,8 @@ export function generateMetadata(): Metadata {
   return {
     title: 'MotoDílomat.cz – srovnávač dílů na Jawu, ČZ, Babettu a Stadion',
     description: 'Ceny náhradních dílů na Jawu, ČZ, Babettu a Stadion ze všech specializovaných e-shopů na jednom místě.',
+    alternates: {canonical: '/'},
+    openGraph: {title: 'MotoDílomat.cz – srovnávač dílů na Jawu, ČZ, Babettu a Stadion', url: '/'},
     robots: catalogRobots(),
   };
 }
