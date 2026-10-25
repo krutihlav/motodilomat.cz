@@ -34,8 +34,9 @@ jobs:
             [ -z "$chunk" ] && break
             msg=$(printf '%s' "$chunk" | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')
             echo "::notice title=clusters-report part $i::$msg"
-            [ $(( (i+1)*3000 )) -ge $(wc -c < clusters-report.md) ] && break
+            if [ $(( (i+1)*3000 )) -ge $(wc -c < clusters-report.md) ]; then break; fi
           done
+          true
 
       - uses: actions/upload-artifact@v4
         with:
