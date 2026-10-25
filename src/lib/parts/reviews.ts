@@ -1,0 +1,52 @@
+import type {SupabaseClient} from '@supabase/supabase-js';
+import {pairKey, type ClusterPair, type PairDecision} from './clusters';
+
+const PAGE_SIZE = 1_000;
+
+/** Ruční rozhodnutí z pair_reviews (migrace 027) jako mapa pairKey -> rozhodnutí. */
+export async function loadReviews(client: SupabaseClient): Promise<Map<string, PairDecision>> {
+  const out = new Map<string, PairDecision>();
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const {data, error} = await client
+      .from('pair_reviews')
+      .select('offer_a, offer_b, decision')
+      .order('offer_a')
+      .order('offer_b')
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(`Načtení pair_reviews selhalo: ${error.message}`);
+    for (const row of data ?? []) {
+      out.set(pairKey(row.offer_a as string, row.offer_b as string), row.decision as PairDecision);
+    }
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+  return out;
+}
+
+export type QueueRow = {
+  offer_a: string;
+  offer_b: string;
+  rank: number;
+  reasons: string[];
+  shared: string[];
+  jaccard: number;
+  price_ratio: number | null;
+};
+
+/** Řádky fronty pro ruční kontrolu: B páry bez rozhodnutí v pořadí rankB. */
+export function queueRows(rankedB: ClusterPair[], reviews: Map<string, PairDecision>): QueueRow[] {
+  const rows: QueueRow[] = [];
+  for (const pair of rankedB) {
+    const [a, b] = pair.a.id < pair.b.id ? [pair.a.id, pair.b.id] : [pair.b.id, pair.a.id];
+    if (reviews.has(pairKey(a, b))) continue;
+    rows.push({
+      offer_a: a,
+      offer_b: b,
+      rank: rows.length + 1,
+      reasons: pair.reasons,
+      shared: pair.shared,
+      jaccard: Math.round(pair.jaccard * 1000) / 1000,
+      price_ratio: pair.priceRatio === null ? null : Math.round(pair.priceRatio * 100) / 100,
+    });
+  }
+  return rows;
+}

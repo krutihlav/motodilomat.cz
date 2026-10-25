@@ -74,7 +74,16 @@ export type ClusterResult = {
 export type ClusterOptions = {
   maxPriceRatio?: number;
   minJaccard?: number;
+  /** Ruční rozhodnutí (pair_reviews): klíč pairKey(a, b). same = A, different = pár se zahodí. */
+  reviews?: Map<string, PairDecision>;
 };
+
+export type PairDecision = 'same' | 'different' | 'skip';
+
+/** Klíč dvojice nabídek nezávislý na pořadí (menší id první, stejně jako v DB). */
+export function pairKey(a: string, b: string): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
 
 export const VARIANT_ATTRIBUTES: (keyof OfferVariant)[] = [
   'dimension',
@@ -218,12 +227,12 @@ export function findClusterPairs(
       for (let j = i + 1; j < members.length; j += 1) {
         const b = members[j];
         if (a.shopId === b.shopId || b.partWords.size === 0) continue;
-        const pairKey = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
-        if (seen.has(pairKey)) continue;
+        const key2 = pairKey(a.id, b.id);
+        if (seen.has(key2)) continue;
 
         const sim = jaccard(a.partWords, b.partWords);
         if (sim < minJaccard) continue;
-        seen.add(pairKey);
+        seen.add(key2);
         result.candidates += 1;
 
         const basis: PairBasis = isModel ? 'model' : key === 'fit|' ? 'no_fit' : 'fit_generic';
@@ -272,8 +281,37 @@ export function findClusterPairs(
     }
   }
   markAmbiguous(result);
+  if (options.reviews && options.reviews.size > 0) applyReviews(result, options.reviews);
   result.clusters = buildClusters(result.pairs);
   return result;
+}
+
+/**
+ * Ruční rozhodnutí mají přednost před pravidly: „same“ udělá z páru A (i přes nejednoznačnost),
+ * „different“ pár zahodí. „skip“ nic nemění.
+ */
+export function applyReviews(result: ClusterResult, reviews: Map<string, PairDecision>): void {
+  const kept: ClusterPair[] = [];
+  for (const pair of result.pairs) {
+    const decision = reviews.get(pairKey(pair.a.id, pair.b.id));
+    if (decision === 'different') {
+      if (pair.class === 'A') result.countA -= 1;
+      else result.countB -= 1;
+      result.byBasis[pair.basis][pair.class] -= 1;
+      continue;
+    }
+    if (decision === 'same' && pair.class === 'B') {
+      pair.class = 'A';
+      pair.reasons.push('ručně: stejný díl');
+      result.countB -= 1;
+      result.countA += 1;
+      result.byBasis[pair.basis].B -= 1;
+      result.byBasis[pair.basis].A += 1;
+    }
+    kept.push(pair);
+  }
+  result.pairs.length = 0;
+  result.pairs.push(...kept);
 }
 
 /**

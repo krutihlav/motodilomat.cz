@@ -62,7 +62,9 @@ async function main() {
     if (!data || data.length < PAGE_SIZE) break;
   }
 
-  const report = renderClusterReport(findClusterPairs(sources), {
+  const { loadReviews } = await import('../src/lib/parts/reviews');
+  const reviews = await loadReviews(client);
+  const report = renderClusterReport(findClusterPairs(sources, { reviews }), {
     topB: Number(arg('top-b') ?? 200),
   });
   const out = arg('out');

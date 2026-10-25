@@ -1,0 +1,43 @@
+name: Fronta dvojic k ručnímu schválení (pair_queue)
+
+# Ruční spuštění. write=false -> jen počty a ukázka; write=true -> přepíše pair_queue
+# (odvozená data, rozhodnutí v pair_reviews se nemažou).
+on:
+  workflow_dispatch:
+    inputs:
+      write:
+        description: 'Přepsat pair_queue'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  queue:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Fronta dvojic
+        run: |
+          set -o pipefail
+          npx tsx scripts/write-pair-queue.ts ${{ inputs.write && '--write' || '' }} 2>&1 | tee pair-queue.log
+
+      - name: Shrnutí do anotací
+        if: always()
+        run: |
+          msg=$(head -c 3000 pair-queue.log 2>/dev/null | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')
+          echo "::notice title=pair-queue::$msg"
+          tail=$(tail -c 1500 pair-queue.log 2>/dev/null | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')
+          echo "::notice title=pair-queue (konec)::$tail"
