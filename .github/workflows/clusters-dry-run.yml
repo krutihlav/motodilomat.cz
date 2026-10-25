@@ -26,6 +26,17 @@ jobs:
       - name: Páry A/B mezi shopy
         run: npx tsx scripts/dry-run-clusters.ts --out clusters-report.md
 
+      # Shrnutí reportu i jako anotace – čitelné přes API i tam, kde nejdou stáhnout artefakty.
+      - name: Shrnutí do anotací
+        run: |
+          for i in 0 1 2 3 4 5; do
+            chunk=$(head -c $(( (i+1)*3000 )) clusters-report.md | tail -c 3000)
+            [ -z "$chunk" ] && break
+            msg=$(printf '%s' "$chunk" | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')
+            echo "::notice title=clusters-report part $i::$msg"
+            [ $(( (i+1)*3000 )) -ge $(wc -c < clusters-report.md) ] && break
+          done
+
       - uses: actions/upload-artifact@v4
         with:
           name: clusters-dry-run-report
