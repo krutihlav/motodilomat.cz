@@ -246,3 +246,23 @@ describe('buildPartPlans', () => {
     expect(withExisting).not.toContain(`slug: \`${plans[0].slug}\``);
   });
 });
+
+describe('buildPartPlans - stejný klíč u dvou shluků', () => {
+  it('dostanou unikátní cluster_key i slug', async () => {
+    const { findClusterPairs } = await import('../../src/lib/parts/clusters');
+    const { buildPartPlans } = await import('../../src/lib/parts/partsPlan');
+    const src = (id: string, shopId: string, name: string, price: number) => ({
+      id, shopId, name, price, modelIds: ['jawa-350-638'], fitGeneric: null, matchStatus: 'pending', partId: null, modelMatchLevel: 'type',
+    });
+    const clusters = findClusterPairs([
+      src('00000000-0000-0000-0000-000000000001', 'motomax', 'Karburátor Jawa 638', 1000),
+      src('00000000-0000-0000-0000-000000000002', 'jawa-korda', 'Karburátor Jawa 638', 1100),
+    ]).clusters;
+    // stejný shluk zdvojený – simulace dvou nespojených komponent se shodným klíčem
+    const twin = clusters.map((c) => ({ ...c, items: c.items.map((i) => ({ ...i, id: i.id.replace(/^0/, 'f') })) }));
+    const plans = buildPartPlans([...clusters, ...twin]);
+    expect(plans).toHaveLength(2);
+    expect(new Set(plans.map((p) => p.clusterKey)).size).toBe(2);
+    expect(new Set(plans.map((p) => p.slug)).size).toBe(2);
+  });
+});

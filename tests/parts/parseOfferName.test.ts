@@ -708,3 +708,27 @@ describe('parseOfferName - materiál a barva na konci', () => {
     );
   });
 });
+
+describe('parseOfferName - zapalování (souprava, bezkontaktní, magneto = rotor)', () => {
+  it('sjednotí typ dílu zapalování', () => {
+    const a = parseOfferName('Zapalování *VAPE STADION / JAWETTA 6V 20W (vnitřní magneto)', { shopId: 'motomax' });
+    const b = parseOfferName('Bezkontaktní zapalování VAPE - Stadion, Jawetta', { shopId: 'motojelinek' });
+    const c = parseOfferName('Souprava zapalování Stadion (vnitřní rotor)', { shopId: 'jawasvet' });
+    expect(a.partType).toBe('zapalovan');
+    expect(b.partType).toBe('zapalovan');
+    expect(c.partType).toBe('zapalovan');
+  });
+
+  it('magneto a rotor jsou v poznámce totéž, vnitřní/venkovní zůstává varianta', () => {
+    const inner = parseOfferName('Zapalování *VAPE STADION / JAWETTA 6V 20W (vnitřní magneto)', { shopId: 'motomax' });
+    const outer = parseOfferName('Zapalování bezkontaktní VAPE (venkovní rotor) STADION S11, S22', { shopId: 'veteranmoto' });
+    expect(inner.variant.note).toBe('rotor');
+    expect(outer.variant.note).toBe('rotor');
+    expect(inner.variant.position).toBe('inner');
+    expect(outer.variant.position).toBe('outer');
+  });
+
+  it('kontaktní zapalování zůstává jiný díl', () => {
+    expect(parseOfferName('Zapalování kontaktní Pionýr').partType).not.toBe('zapalovan');
+  });
+});

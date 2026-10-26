@@ -225,3 +225,29 @@ import se nenasazuje“).
 **Nový e-shop:** vložit řádek do `shops` (`feed_url` + `feed_format`, nebo
 `base_url` se `source_type='crawl'`), ověřit `probe-shops.yml` a jednorázově
 `internal-import-verified-shops.yml` (s `shop_id`), pak `internal_sync = true`.
+
+## 2026-10-25 – Veřejný web bez předchozího souhlasu e-shopů
+
+**Rozhodnutí (Adam):** Ruší se pravidlo „před spuštěním veřejného webu je potřeba
+souhlas e-shopů“. Zobrazujeme veřejné údaje (název, cena, dostupnost, odkaz) a
+respektujeme opt-out.
+
+- Nový sloupec `shops.public_listing` (migrace `024`) = shop jde na veřejný web.
+  Rozhoduje Adam; `crawl_enabled` / `feed_permission` už na veřejnost vliv nemají.
+  RLS: anon čte `shop_products` jen při `is_public` + `public_listing`.
+- **Fotky** se nekopírují: `<img src={image_url}>` se načítá přímo ze serveru e-shopu
+  (bez Next image optimizeru), s popiskem „foto: {shop}“; při chybě ikona.
+  Popisy produktů nepřebíráme.
+- **Opt-out:** stránka `/pro-eshopy` (robots.txt pravidlo pro MotodilomatBot,
+  formulář → tabulka `contact_messages`, jen service role). Žádost o odstranění =
+  `public_listing = false` + `internal_sync` podle domluvy.
+- Jávárna (blokuje, data z 23. 9.) se nezobrazuje – nemá `internal_sync`.
+
+**Katalog na webu (PR katalog):** čtecí SQL funkce `catalog_*` (migrace `025`,
+`025b`, SECURITY INVOKER, platí RLS). Interní náhled: `SHOW_INTERNAL_PRODUCTS=true`
+a zároveň `VERCEL_ENV != production` → service role a shopy s `internal_sync`.
+Stránky: `/`, `/hledat`, `/model/[slug]`, `/dil/[slug]`, `/pro-eshopy`; bez
+`NEXT_PUBLIC_LAUNCHED` vrací katalog 404 a `/` ukazuje coming soon.
+
+**Dočasné:** kategorie na stránce modelu podle klíčových slov v názvu
+(`catalog_category`, migrace 025b). Nahradí je kategorie kanonických dílů.

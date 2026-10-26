@@ -1,4 +1,4 @@
-import { parseOfferName, type OfferVariant, type ParsedOffer } from './parseOfferName';
+import { foldText, parseOfferName, stemWord, type OfferVariant, type ParsedOffer } from './parseOfferName';
 
 export type FitGenericEntry = { brand: string; displacement?: number | null };
 
@@ -20,7 +20,14 @@ export type ClusterSource = {
   partId?: string | null;
 };
 
-export type ClusterItem = ClusterSource & { parsed: ParsedOffer; partWords: Set<string> };
+export type ClusterItem = ClusterSource & {
+  parsed: ParsedOffer;
+  partWords: Set<string>;
+  /** kmeny z partType, které jsou v názvu přídavným jménem („kulatý“, „primární“) */
+  adjectiveWords: Set<string>;
+  /** hlavní slovo typu dílu = první slovo názvu, které je v partType („pružina“ v „Pružina čelistí“) */
+  headWord: string | null;
+};
 
 export type PairBasis = 'model' | 'fit_generic' | 'no_fit';
 
@@ -38,6 +45,8 @@ export type ClusterPair = {
   priceRatio: number | null;
   /** proč pár není A (jen u B), případně zajímavé okolnosti */
   reasons: string[];
+  /** u A: která uvolněná pravidla pár pustila (např. „jen u jedné: pack“, „typ ⊂“) */
+  relaxed: string[];
 };
 
 export type ClusterGroup = {
@@ -74,7 +83,37 @@ export type ClusterResult = {
 export type ClusterOptions = {
   maxPriceRatio?: number;
   minJaccard?: number;
+  /** false = původní přísná pravidla (každý jednostranný atribut i odlišný partType = B) */
+  relaxed?: boolean;
+  /** Ruční rozhodnutí (pair_reviews): klíč pairKey(a, b). same = A, different = pár se zahodí. */
+  reviews?: Map<string, PairDecision>;
+  /** Pravidla naučená z ručních rozhodnutí (learnFromReviews). */
+  learned?: LearnedRules;
 };
+
+export type LearnedRules = {
+  /** slova typu dílu, na kterých nezáleží („kompletn“, „repasovan“) */
+  neutralWords: Set<string>;
+  /** slova, která dělají jiný díl („naboj“) – liší-li se v nich typy, pár nikdy není A */
+  blockWords: Set<string>;
+  /** typ dílu → atributy, které jen u jedné nabídky u tohoto typu nevadí (zapalovan → ref) */
+  softAttrsByType: Map<string, Set<string>>;
+};
+
+/** Slova, ve kterých se typy dvou nabídek liší. */
+export function typeDiff(a: ClusterItem, b: ClusterItem): string[] {
+  return [
+    ...[...a.partWords].filter((w) => !b.partWords.has(w)),
+    ...[...b.partWords].filter((w) => !a.partWords.has(w)),
+  ];
+}
+
+export type PairDecision = 'same' | 'different' | 'skip';
+
+/** Klíč dvojice nabídek nezávislý na pořadí (menší id první, stejně jako v DB). */
+export function pairKey(a: string, b: string): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
 
 export const VARIANT_ATTRIBUTES: (keyof OfferVariant)[] = [
   'dimension',
@@ -96,12 +135,105 @@ export const VARIANT_ATTRIBUTES: (keyof OfferVariant)[] = [
 export function buildClusterItems(sources: ClusterSource[]): ClusterItem[] {
   return sources.map((source) => {
     const parsed = parseOfferName(source.name, { shopId: source.shopId });
+    const partWords = new Set(parsed.partType.split(' ').filter(Boolean));
     return {
       ...source,
       parsed,
-      partWords: new Set(parsed.partType.split(' ').filter(Boolean)),
+      partWords,
+      headWord: headWordOf(source.name, partWords),
+      adjectiveWords: adjectiveWordsOf(source.name, partWords),
     };
   });
+}
+
+/** První slovo názvu (v pořadí), jehož kmen je v partType. */
+export function headWordOf(name: string, partWords: Set<string>): string | null {
+  for (const word of foldText(name).split(/[^a-z0-9]+/)) {
+    if (word.length < 2) continue;
+    const stem = stemWord(word);
+    if (partWords.has(stem)) return stem;
+  }
+  return null;
+}
+
+/**
+ * Přídavné jméno podle koncovky (před odstraněním diakritiky): -ý/-á/-é, nebo -í kromě
+ * podstatných jmen slovesných (těsnění, zapalování, řízení). Hrubé, ale stačí na „slovo navíc“.
+ */
+export function isAdjective(word: string): boolean {
+  const w = word.toLowerCase();
+  if (w.length < 4) return false;
+  if (/[ýáé]$/.test(w)) return true;
+  return /í$/.test(w) && !/(ení|ání|ění|ítí|ití|ůní)$/.test(w);
+}
+
+export function adjectiveWordsOf(name: string, partWords: Set<string>): Set<string> {
+  const out = new Set<string>();
+  for (const word of name.split(/[^\p{L}\d]+/u)) {
+    if (!isAdjective(word)) continue;
+    const stem = stemWord(foldText(word));
+    if (partWords.has(stem)) out.add(stem);
+  }
+  return out;
+}
+
+/**
+ * Atributy, jejichž údaj jen u jedné nabídky shodu neblokuje: povrch, materiál, barva, balení
+ * („úpl.“, „sada“ – ne počet kusů), „s čím“ a umístění. E-shopy je prostě často neuvádějí. Kdyby nabídka bez
+ * údaje pasovala na dvě různé varianty z jednoho shopu (šedý / červený), chytí to nejednoznačnost.
+ * Napětí, strana, velikost, značka (Jikov, Vape…), verze a kód blokují dál.
+ */
+export const SOFT_ONE_SIDED = new Set([
+  'finish',
+  'material',
+  'color',
+  'pack',
+  'with',
+  'position',
+  // rozměr a zuby: nabídka bez údaje je buď jediná varianta, nebo výběr variant v e-shopu
+  // (píst „více variant“). Ten druhý případ chytí nejednoznačnost – nabídka bez rozměru má pak
+  // z jednoho shopu víc partnerů s různým rozměrem a všechny její páry jdou do B.
+  'dimension',
+  'teeth',
+]);
+
+/**
+ * Typ dílu jedné nabídky je podmnožinou druhé o jediné slovo navíc, to slovo je přídavné jméno
+ * a není hlavní („Vzduchový filtr“ ⊂ „Vzduchový filtr kulatý“ ano; „Náboj rozety“ ⊂ „Unašeč náboje
+ * rozety“ ne; „Píst“ ⊂ „Pístní sada“ ne).
+ */
+export function subsetType(a: ClusterItem, b: ClusterItem): boolean {
+  const [small, big] = a.partWords.size <= b.partWords.size ? [a, b] : [b, a];
+  if (small.partWords.size === 0 || big.partWords.size - small.partWords.size !== 1) return false;
+  for (const word of small.partWords) if (!big.partWords.has(word)) return false;
+  const extra = [...big.partWords].find((word) => !small.partWords.has(word))!;
+  if (big.headWord === extra) return false;
+  if (big.adjectiveWords.has(extra)) return true;
+  // podstatné jméno navíc jen při stejném hlavním slovu („Vložka výfuku“ ⊂ „Vložka tlumiče výfuku“,
+  // „Jehla karburátoru“ ⊂ „Jehla šoupátka karburátoru“) – ne „sada“ a ne názvy s „+“ (víc dílů)
+  return (
+    small.headWord !== null &&
+    small.headWord === big.headWord &&
+    !SET_WORDS.has(extra) &&
+    !a.name.includes('+') &&
+    !b.name.includes('+')
+  );
+}
+
+/** Slova, která dělají z dílu sadu / jiný celek – nikdy nejsou „jen upřesnění“. */
+const SET_WORDS = new Set(['sada', 'souprav', 'komplet', 'kit', 'gufer', 'tesnen']);
+
+/**
+ * Stejné hlavní slovo a všechna slova, ve kterých se typy liší, jsou přídavná jména
+ * („Plech sedla rovný“ ↔ „Plech sedla“, „Lamela spojky korková“ ↔ „Lamela spojky ferodová“
+ * by prošla – proto dál platí cena ×2,5 a nejednoznačnost).
+ */
+export function adjectiveOnlyDiff(a: ClusterItem, b: ClusterItem): boolean {
+  if (a.headWord === null || a.headWord !== b.headWord) return false;
+  const onlyA = [...a.partWords].filter((w) => !b.partWords.has(w));
+  const onlyB = [...b.partWords].filter((w) => !a.partWords.has(w));
+  if (onlyA.length + onlyB.length === 0) return false;
+  return onlyA.every((w) => a.adjectiveWords.has(w)) && onlyB.every((w) => b.adjectiveWords.has(w));
 }
 
 /** Klíč fit_generic: seřazené "brand|objem". '' = bez údaje. */
@@ -182,7 +314,7 @@ export function findClusterPairs(
   sources: ClusterSource[] | ClusterItem[],
   options: ClusterOptions = {},
 ): ClusterResult {
-  const { maxPriceRatio = 2.5, minJaccard = 0.5 } = options;
+  const { maxPriceRatio = 2.5, minJaccard = 0.5, relaxed = true, learned } = options;
   const items =
     sources.length > 0 && 'parsed' in sources[0]
       ? (sources as ClusterItem[])
@@ -218,12 +350,12 @@ export function findClusterPairs(
       for (let j = i + 1; j < members.length; j += 1) {
         const b = members[j];
         if (a.shopId === b.shopId || b.partWords.size === 0) continue;
-        const pairKey = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
-        if (seen.has(pairKey)) continue;
+        const key2 = pairKey(a.id, b.id);
+        if (seen.has(key2)) continue;
 
         const sim = jaccard(a.partWords, b.partWords);
         if (sim < minJaccard) continue;
-        seen.add(pairKey);
+        seen.add(key2);
         result.candidates += 1;
 
         const basis: PairBasis = isModel ? 'model' : key === 'fit|' ? 'no_fit' : 'fit_generic';
@@ -240,10 +372,33 @@ export function findClusterPairs(
 
         const ratio = priceRatio(a.price, b.price);
         const sameType = a.parsed.partType === b.parsed.partType;
-        const isA = sameType && oneSided.length === 0 && ratio !== null && ratio <= maxPriceRatio;
+        const diff = learned ? typeDiff(a, b) : [];
+        const learnedBlock = diff.some((w) => learned!.blockWords.has(w));
+        const learnedSame =
+          !sameType && diff.length > 0 && !learnedBlock && diff.every((w) => learned!.neutralWords.has(w));
+        const typeOk =
+          !learnedBlock &&
+          (sameType || learnedSame || (relaxed && (subsetType(a, b) || adjectiveOnlyDiff(a, b))));
+        const learnedSoft = learned?.softAttrsByType.get(a.parsed.partType);
+        const packValue = a.parsed.variant.pack ?? b.parsed.variant.pack;
+        const blocking = relaxed
+          ? oneSided.filter(
+              (key) =>
+                (!SOFT_ONE_SIDED.has(key) && !(sameType && learnedSoft?.has(key))) ||
+                // počet kusů („2ks“) mění cenu – blokuje; „sada“ / „úpl.“ ne
+                (key === 'pack' && packValue !== 'sada' && packValue !== 'complete'),
+            )
+          : oneSided;
+        const isA = typeOk && blocking.length === 0 && ratio !== null && ratio <= maxPriceRatio;
         const reasons: string[] = [];
-        if (!sameType) reasons.push(`jaccard ${sim.toFixed(2)}`);
-        if (oneSided.length > 0) reasons.push(`chybí: ${oneSided.join(',')}`);
+        if (!typeOk) reasons.push(`jaccard ${sim.toFixed(2)}`);
+        if (blocking.length > 0) reasons.push(`chybí: ${blocking.join(',')}`);
+        const relaxedBy: string[] = [];
+        if (isA && learnedSame) relaxedBy.push('naučeno: slova');
+        else if (isA && !sameType) relaxedBy.push('typ ⊂');
+        if (isA && learnedSoft && oneSided.some((k) => learnedSoft.has(k))) relaxedBy.push('naučeno: údaj');
+        if (learnedBlock) reasons.push('naučeno: jiný díl');
+        if (isA && oneSided.length > 0) relaxedBy.push(`jen u jedné: ${oneSided.join(',')}`);
         if (ratio === null) reasons.push('cena chybí');
         else if (ratio > maxPriceRatio) reasons.push(`cena ×${ratio.toFixed(1)}`);
 
@@ -259,6 +414,7 @@ export function findClusterPairs(
           jaccard: sim,
           priceRatio: ratio,
           reasons,
+          relaxed: relaxedBy,
         });
         if (isA) result.countA += 1;
         else result.countB += 1;
@@ -272,8 +428,37 @@ export function findClusterPairs(
     }
   }
   markAmbiguous(result);
+  if (options.reviews && options.reviews.size > 0) applyReviews(result, options.reviews);
   result.clusters = buildClusters(result.pairs);
   return result;
+}
+
+/**
+ * Ruční rozhodnutí mají přednost před pravidly: „same“ udělá z páru A (i přes nejednoznačnost),
+ * „different“ pár zahodí. „skip“ nic nemění.
+ */
+export function applyReviews(result: ClusterResult, reviews: Map<string, PairDecision>): void {
+  const kept: ClusterPair[] = [];
+  for (const pair of result.pairs) {
+    const decision = reviews.get(pairKey(pair.a.id, pair.b.id));
+    if (decision === 'different') {
+      if (pair.class === 'A') result.countA -= 1;
+      else result.countB -= 1;
+      result.byBasis[pair.basis][pair.class] -= 1;
+      continue;
+    }
+    if (decision === 'same' && pair.class === 'B') {
+      pair.class = 'A';
+      pair.reasons.push('ručně: stejný díl');
+      result.countB -= 1;
+      result.countA += 1;
+      result.byBasis[pair.basis].B -= 1;
+      result.byBasis[pair.basis].A += 1;
+    }
+    kept.push(pair);
+  }
+  result.pairs.length = 0;
+  result.pairs.push(...kept);
 }
 
 /**
@@ -316,17 +501,53 @@ function markAmbiguous(result: ClusterResult): void {
     add(pair.a, pair.b);
     add(pair.b, pair.a);
   }
+  // nejednoznačnost platí jen vůči shopu, ze kterého má nabídka víc rozdílných partnerů;
+  // páry s ostatními shopy zůstávají A (union-find je přes tento shop nespojí)
   const ambiguous = new Set<string>();
+  const owners = new Set<string>();
+  // partneři napříč shopy se navzájem variantou vylučují (65,25 vs 66,00 / 6V vs 12V) → nabídka
+  // je „výběr variant“: do B jdou její páry s partnery, kteří ten atribut mají. Páry s jinými
+  // stejně obecnými nabídkami (atribut nemají) zůstávají A.
+  const vagueAttrs = new Map<string, Set<string>>();
   for (const [ownerId, byShop] of partners) {
-    for (const list of byShop.values()) {
+    const all = [...byShop.values()].flat();
+    const attrs = new Set<string>();
+    all.forEach((x, i) =>
+      all.slice(i + 1).forEach((y) => {
+        for (const key of compareVariants(x.parsed.variant, y.parsed.variant).conflicts) attrs.add(key);
+      }),
+    );
+    if (attrs.size > 0) {
+      vagueAttrs.set(ownerId, attrs);
+      owners.add(ownerId);
+    }
+    for (const [shopId, list] of byShop) {
       if (list.length < 2) continue;
       const differs = list.some((x, i) => list.slice(i + 1).some((y) => !sameOffer(x, y)));
-      if (differs) ambiguous.add(ownerId);
+      if (differs) {
+        ambiguous.add(`${ownerId}|${shopId}`);
+        owners.add(ownerId);
+      }
     }
   }
-  result.ambiguousItems = ambiguous.size;
+  result.ambiguousItems = owners.size;
+  const hasVague = (owner: ClusterItem, partner: ClusterItem) => {
+    const attrs = vagueAttrs.get(owner.id);
+    if (!attrs) return false;
+    return [...attrs].some((key) => partner.parsed.variant[key as keyof OfferVariant] !== null);
+  };
   for (const pair of result.pairs) {
-    if (pair.class !== 'A' || !(ambiguous.has(pair.a.id) || ambiguous.has(pair.b.id))) continue;
+    if (
+      pair.class !== 'A' ||
+      !(
+        hasVague(pair.a, pair.b) ||
+        hasVague(pair.b, pair.a) ||
+        ambiguous.has(`${pair.a.id}|${pair.b.shopId}`) ||
+        ambiguous.has(`${pair.b.id}|${pair.a.shopId}`)
+      )
+    ) {
+      continue;
+    }
     pair.class = 'B';
     pair.reasons.push('ambiguous');
     result.countA -= 1;
@@ -425,6 +646,20 @@ export function renderClusterReport(
       .map((b) => `${b} A ${result.byBasis[b].A} / B ${result.byBasis[b].B}`)
       .join('; ')}`,
   );
+
+  const relaxedPairs = result.pairs.filter((p) => p.class === 'A' && p.relaxed.length > 0);
+  if (relaxedPairs.length > 0) {
+    const byRule: Record<string, number> = {};
+    for (const p of relaxedPairs) for (const r of p.relaxed) byRule[r] = (byRule[r] ?? 0) + 1;
+    out.push('', `## A jen díky uvolněným pravidlům (${relaxedPairs.length} párů)`, '');
+    for (const [rule, n] of Object.entries(byRule).sort((x, y) => y[1] - x[1])) out.push(`- ${rule}: ${n}`);
+    out.push('', 'Ukázka (každý 1/N-tý pár, nejvýš 60):', '');
+    const step = Math.max(1, Math.floor(relaxedPairs.length / 60));
+    for (let i = 0; i < relaxedPairs.length && i / step < 60; i += step) {
+      const p = relaxedPairs[i];
+      out.push(`- [${p.relaxed.join('; ')}] ${esc(p.a.name)} (${money(p.a.price)}) ↔ ${esc(p.b.name)} (${money(p.b.price)})`);
+    }
+  }
 
   out.push('', '## Zahozeno pro konflikt varianty podle atributu', '');
   out.push(

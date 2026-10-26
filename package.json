@@ -20,7 +20,8 @@
     "next": "^16.3.5",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
-    "sax": "^1.6.1"
+    "sax": "^1.6.1",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

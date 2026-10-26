@@ -31,7 +31,9 @@ import {
   findClusterPairs,
   type ClusterSource,
   type FitGenericEntry,
+  type PairDecision,
 } from '../src/lib/parts/clusters';
+import { clusterWithLearning, loadReviews, renderLearnReport } from '../src/lib/parts/reviews';
 import {
   buildPartPlans,
   countStaleAuto,
@@ -40,7 +42,9 @@ import {
 } from '../src/lib/parts/partsPlan';
 
 const PAGE_SIZE = 1_000;
-const CHUNK = 200;
+const CHUNK = 100;
+/** Klíče shluků jsou dlouhé – v URL (.in) jich smí být jen pár, jinak fetch selže na délce URL. */
+const KEY_CHUNK = 25;
 
 export async function loadSources(client: SupabaseClient): Promise<ClusterSource[]> {
   const sources: ClusterSource[] = [];
@@ -93,11 +97,12 @@ export class SupabasePartsRepository implements PartsRepository {
 
   private async findParts(column: 'id' | 'cluster_key', values: string[]) {
     const found = [];
-    for (let i = 0; i < values.length; i += CHUNK) {
+    const step = column === 'cluster_key' ? KEY_CHUNK : CHUNK;
+    for (let i = 0; i < values.length; i += step) {
       const { data, error } = await this.client
         .from('parts')
         .select('id, cluster_key, slug, source')
-        .in(column, values.slice(i, i + CHUNK));
+        .in(column, values.slice(i, i + step));
       if (error) throw new Error(`Načtení parts selhalo: ${error.message}`);
       for (const row of data ?? []) {
         found.push({
@@ -120,6 +125,20 @@ export class SupabasePartsRepository implements PartsRepository {
   }
 
   async insertPart(part: Parameters<PartsRepository['insertPart']>[0]) {
+    // slug je hash cluster_key; existující díl si při změně shluku nechává starý slug, takže
+    // nový díl může narazit na obsazený slug → přidá se pořadové číslo
+    for (let attempt = 1; ; attempt += 1) {
+      const slug = attempt === 1 ? part.slug : `${part.slug}-${attempt}`;
+      try {
+        return await this.insertPartOnce({ ...part, slug });
+      } catch (error) {
+        if (attempt < 5 && /parts_slug_key/.test(String(error))) continue;
+        throw error;
+      }
+    }
+  }
+
+  private async insertPartOnce(part: Parameters<PartsRepository['insertPart']>[0]) {
     const { data, error } = await this.client
       .from('parts')
       .insert({
@@ -193,15 +212,23 @@ export class SupabasePartsRepository implements PartsRepository {
   }
 }
 
-export function planFromSources(sources: ClusterSource[]): PartPlan[] {
-  return buildPartPlans(findClusterPairs(sources).clusters);
+export function planFromSources(
+  sources: ClusterSource[],
+  reviews?: Map<string, PairDecision>,
+): PartPlan[] {
+  if (!reviews) return buildPartPlans(findClusterPairs(sources).clusters);
+  const { result, learn } = clusterWithLearning(sources, reviews);
+  console.log(renderLearnReport(learn));
+  return buildPartPlans(result.clusters);
 }
 
 async function main() {
   const { createServiceRoleClient } = await import('../src/lib/supabase/server');
   const client = createServiceRoleClient();
   const sources = await loadSources(client);
-  const plans = planFromSources(sources);
+  const reviews = await loadReviews(client);
+  console.log(`Ruční rozhodnutí (pair_reviews): ${reviews.size}`);
+  const plans = planFromSources(sources, reviews);
   const repo = new SupabasePartsRepository(client);
 
   let existing: number | undefined;

@@ -1,8 +1,15 @@
 name: Dry-run shlukování nabídek (read-only)
 
 # Jen čte shop_products a shop_product_models. Nic nezapisuje. Report jde celý do logu.
+# Volitelně (write_queue=true) přepíše frontu dvojic k ručnímu schválení (pair_queue) –
+# odvozená data, rozhodnutí v pair_reviews se nemažou.
 on:
   workflow_dispatch:
+    inputs:
+      write_queue:
+        description: 'Přepsat frontu dvojic k ručnímu schválení (pair_queue)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -26,7 +33,33 @@ jobs:
       - name: Páry A/B mezi shopy
         run: npx tsx scripts/dry-run-clusters.ts --out clusters-report.md
 
+      # Shrnutí reportu i jako anotace – čitelné přes API i tam, kde nejdou stáhnout artefakty.
+      - name: Shrnutí do anotací
+        run: |
+          for i in 0 1 2 3 4 5; do
+            chunk=$(head -c $(( (i+1)*3000 )) clusters-report.md | tail -c 3000)
+            [ -z "$chunk" ] && break
+            msg=$(printf '%s' "$chunk" | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')
+            echo "::notice title=clusters-report part $i::$msg"
+            if [ $(( (i+1)*3000 )) -ge $(wc -c < clusters-report.md) ]; then break; fi
+          done
+          true
+
       - uses: actions/upload-artifact@v4
         with:
           name: clusters-dry-run-report
           path: clusters-report.md
+
+      - name: Fronta dvojic k ručnímu schválení
+        if: ${{ inputs.write_queue }}
+        run: |
+          set -o pipefail
+          npx tsx scripts/write-pair-queue.ts --write 2>&1 | tee pair-queue.log
+
+      - name: Fronta do anotací
+        if: ${{ always() && inputs.write_queue }}
+        run: |
+          msg=$(head -c 3000 pair-queue.log 2>/dev/null | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')
+          echo "::notice title=pair-queue::$msg"
+          tail=$(tail -c 1000 pair-queue.log 2>/dev/null | sed ':a;N;$!ba;s/%/%25/g;s/\r/%0D/g;s/\n/%0A/g')
+          echo "::notice title=pair-queue (konec)::$tail"

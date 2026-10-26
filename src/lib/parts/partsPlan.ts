@@ -176,6 +176,19 @@ export function buildPartPlans(
       })),
     });
   }
+  // Dva nespojené shluky se stejným klíčem (stejný typ, varianta i modely, ale bez páru A mezi
+  // sebou – typicky nejednoznačnost) jsou různé díly: klíč i slug dostanou příponu podle
+  // nejmenšího id nabídky, aby byl unique cluster_key a zápis zůstal idempotentní.
+  const byKey = new Map<string, PartPlan[]>();
+  for (const plan of plans) byKey.set(plan.clusterKey, [...(byKey.get(plan.clusterKey) ?? []), plan]);
+  for (const group of byKey.values()) {
+    if (group.length < 2) continue;
+    for (const plan of group) {
+      const minId = plan.offers.map((o) => o.id).sort()[0];
+      plan.clusterKey = `${plan.clusterKey}#${minId.slice(0, 8)}`;
+      plan.slug = `${slugify(plan.name)}-${shortHash(plan.clusterKey)}`;
+    }
+  }
   return plans.sort((a, b) => a.clusterKey.localeCompare(b.clusterKey));
 }
 

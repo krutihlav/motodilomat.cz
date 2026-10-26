@@ -7,7 +7,6 @@
  */
 import { writeFileSync } from 'node:fs';
 import {
-  findClusterPairs,
   renderClusterReport,
   type ClusterSource,
   type FitGenericEntry,
@@ -62,7 +61,10 @@ async function main() {
     if (!data || data.length < PAGE_SIZE) break;
   }
 
-  const report = renderClusterReport(findClusterPairs(sources), {
+  const { loadReviews, clusterWithLearning, renderLearnReport } = await import('../src/lib/parts/reviews');
+  const reviews = await loadReviews(client);
+  const { result, learn } = clusterWithLearning(sources, reviews);
+  const report = renderLearnReport(learn) + '\n' + renderClusterReport(result, {
     topB: Number(arg('top-b') ?? 200),
   });
   const out = arg('out');

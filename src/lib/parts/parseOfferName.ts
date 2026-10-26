@@ -390,6 +390,12 @@ const SYNONYM_STEMS: Record<string, string> = {
   volnobezn: 'volnobeh',
 };
 
+/** Poznámka (obsah závorek): různé názvy téže věci. „vnitřní magneto“ = „vnitřní rotor“. */
+const NOTE_SYNONYMS: Record<string, string> = { magneto: 'rotor', magnetem: 'rotor', rotorem: 'rotor' };
+
+/** Kmeny, které u zapalování nemění díl (viz partType). */
+const IGNITION_NOISE = ['souprav', 'bezkontaktn', 'elektronick'];
+
 export function stemWord(input: string): string {
   return SYNONYM_STEMS[rawStem(input)] ?? rawStem(input);
 }
@@ -613,6 +619,20 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
   text = r.text;
   for (const m of r.matches) dimensions.push(normNum(m[0]).replace(/[=-]/g, ''));
 
+  // trysky: holé číslo hned za „hlavní / volnoběžná / tryska / velikost“ je velikost trysky
+  // („Tryska hlavní 72“, „velikost 68“) – zapíše se jako d72, stejně jako „d=72“
+  if (isJet) {
+    const jetRe = /((?:hlavn|volnobez|trysk|velikost)\w*\s+)(\d{2,3})(?![a-z\d.,])/g;
+    let jm: RegExpExecArray | null;
+    let jetText = text;
+    while ((jm = jetRe.exec(text)) !== null) {
+      dimensions.push(`d${jm[2]}`);
+      const at = jm.index + jm[1].length;
+      jetText = jetText.slice(0, at) + ' '.repeat(jm[2].length) + jetText.slice(at + jm[2].length);
+    }
+    text = jetText;
+  }
+
   // 2,15 x 16", 41,50x2mm, 15 × 4mm, 19" x 2,25
   r = take(
     text,
@@ -808,11 +828,16 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
     if (STOPWORDS.has(word) || VEHICLE_WORDS.has(word)) return;
     // nerozpoznaný obsah závorek není partType, ale poznámka
     if (noParens[at] === ' ') {
-      noteWords.push(word);
+      noteWords.push(NOTE_SYNONYMS[word] ?? word);
       return;
     }
     typeWords.add(stemWord(word));
   });
+  // Zapalování: „souprava“ / „bezkontaktní“ / „elektronické“ jen popisují totéž (VAPE a spol.
+  // jsou bezkontaktní sady). Kontaktní zapalování („kontaktní“, přerušovač) zůstává odlišné.
+  if (typeWords.has('zapalovan')) {
+    for (const noise of IGNITION_NOISE) typeWords.delete(noise);
+  }
   const partType = [...typeWords].sort().join(' ');
 
   return {
