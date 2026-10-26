@@ -162,9 +162,21 @@ export function adjectiveWordsOf(name: string, partWords: Set<string>): Set<stri
  * Atributy, jejichž údaj jen u jedné nabídky shodu neblokuje: povrch, materiál, barva, balení
  * („úpl.“, „sada“ – ne počet kusů), „s čím“ a umístění. E-shopy je prostě často neuvádějí. Kdyby nabídka bez
  * údaje pasovala na dvě různé varianty z jednoho shopu (šedý / červený), chytí to nejednoznačnost.
- * Rozměr, napětí, strana, zuby, velikost, značka (Jikov, Vape…), verze a kód blokují dál.
+ * Napětí, strana, velikost, značka (Jikov, Vape…), verze a kód blokují dál.
  */
-export const SOFT_ONE_SIDED = new Set(['finish', 'material', 'color', 'pack', 'with', 'position']);
+export const SOFT_ONE_SIDED = new Set([
+  'finish',
+  'material',
+  'color',
+  'pack',
+  'with',
+  'position',
+  // rozměr a zuby: nabídka bez údaje je buď jediná varianta, nebo výběr variant v e-shopu
+  // (píst „více variant“). Ten druhý případ chytí nejednoznačnost – nabídka bez rozměru má pak
+  // z jednoho shopu víc partnerů s různým rozměrem a všechny její páry jdou do B.
+  'dimension',
+  'teeth',
+]);
 
 /**
  * Typ dílu jedné nabídky je podmnožinou druhé o jediné slovo navíc, to slovo je přídavné jméno

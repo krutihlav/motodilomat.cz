@@ -125,7 +125,7 @@ describe('findClusterPairs', () => {
     expect(exhaust.countA).toBe(1);
   });
 
-  it('B: rozměr, strana, značka nebo počet kusů jen u jedné nabídky blokují dál', () => {
+  it('B: strana nebo počet kusů jen u jedné nabídky blokují dál', () => {
     const result = findClusterPairs([
       src('javarna', 'Kryt řetězu Jawa Pionýr 20', 100, ['pionyr-20']),
       src('motokramek', 'Kryt řetězu Jawa Pionýr 20 - 2ks', 105, ['pionyr-20']),
@@ -133,6 +133,20 @@ describe('findClusterPairs', () => {
       src('jawa-korda', 'Napínák řetězu Jawa Pionýr 20', 80, ['pionyr-20']),
     ]);
     expect(result.countA).toBe(0);
+  });
+
+  it('rozměr jen u jedné: jediná varianta = A, výběr variant (víc rozměrů z jednoho shopu) = B', () => {
+    const one = findClusterPairs([
+      src('motoveterandily', 'Rozeta zadní Pérák - 160 mm - (chromovaná) - 47 zubů', 5445, ['perak-250']),
+      src('motokramek', 'Rozeta 47z Jawa/Pérák - chrom', 4870, ['perak-250']),
+    ]);
+    expect(one.countA).toBe(1);
+    const many = findClusterPairs([
+      src('motojelinek', 'Píst (CZ/ALMET), čep 18 Jawa 250 Panelka, Sportka', 650, ['panelka-250-559']),
+      src('jawa-korda', 'Píst Jawa 250 panelka 65,25mm, čep 18mm', 650, ['panelka-250-559']),
+      src('jawa-korda', 'Píst Jawa 250 panelka 66mm, čep 18mm', 650, ['panelka-250-559']),
+    ]);
+    expect(many.countA).toBe(0);
   });
 
   it('B: podobný partType (Jaccard ≥ 0,5), ne stejný (přísný režim)', () => {
