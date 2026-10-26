@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import {siteConfig} from '@/config';
+import SearchBox from './SearchBox';
 
 export function Logo() {
   return (
@@ -49,14 +50,14 @@ export function Header({query, placeholder}: {query?: string; placeholder?: stri
     <div className="onred" style={{background: 'var(--red)', color: 'var(--cream)'}}>
       <header className="wrap" style={{paddingTop: 14, paddingBottom: 14, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '12px 32px'}}>
         <Logo />
-        <form action="/hledat" role="search" style={{flex: '1 1 300px', maxWidth: 520, display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', height: 46, boxSizing: 'border-box', background: 'var(--paper)', borderRadius: 8, color: 'var(--ink)'}}>
+        <form action="/hledat" role="search" style={{position: 'relative', flex: '1 1 300px', maxWidth: 520, display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px', height: 46, boxSizing: 'border-box', background: 'var(--paper)', borderRadius: 8, color: 'var(--ink)'}}>
           <span style={{display: 'flex', color: 'var(--dim)'}}>
             <SearchIcon />
           </span>
           <label htmlFor="q-head" className="sr-only">
             Hledat díl
           </label>
-          <input id="q-head" name="q" type="search" defaultValue={query} placeholder={placeholder ?? 'Hledat díl'} style={{flex: 1, minWidth: 0, height: '100%', border: 0, outline: 0, background: 'transparent', color: 'var(--ink)', font: 'inherit', fontSize: 15}} />
+          <SearchBox id="q-head" defaultValue={query} placeholder={placeholder ?? 'Hledat díl'} />
         </form>
         <Nav />
       </header>

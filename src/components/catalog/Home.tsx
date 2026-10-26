@@ -1,5 +1,6 @@
 import {connection} from 'next/server';
 import Link from 'next/link';
+import SearchBox from './SearchBox';
 import {Footer, InternalBanner, Logo, Nav, Plate, SearchIcon, ArrowRight} from './Chrome';
 import {getModels, getShopCounts, getStats, type Model} from '@/lib/catalog/queries';
 import {catalogDb} from '@/lib/catalog/db';
@@ -70,11 +71,11 @@ export default async function Home() {
                 Co sháníš?
               </label>
               <div style={{display: 'flex', flexWrap: 'wrap', gap: 10}}>
-                <div style={{flex: '1 1 260px', display: 'flex', alignItems: 'center', gap: 12, padding: '0 18px', height: 60, boxSizing: 'border-box', background: 'var(--paper)', borderRadius: 10, color: 'var(--ink)'}}>
+                <div style={{position: 'relative', flex: '1 1 260px', display: 'flex', alignItems: 'center', gap: 12, padding: '0 18px', height: 60, boxSizing: 'border-box', background: 'var(--paper)', borderRadius: 10, color: 'var(--ink)'}}>
                   <span style={{display: 'flex', color: 'var(--dim)'}}>
                     <SearchIcon size={22} />
                   </span>
-                  <input id="q" name="q" type="search" required placeholder="např. píst 38,50 Pionýr" style={{flex: 1, minWidth: 0, height: '100%', border: 0, outline: 0, background: 'transparent', color: 'var(--ink)', font: 'inherit', fontSize: 18}} />
+                  <SearchBox id="q" required placeholder="např. píst 38,50 Pionýr" fontSize={18} />
                 </div>
                 <button type="submit" style={{height: 60, padding: '0 30px', border: 0, borderRadius: 10, background: 'var(--ink)', color: 'var(--cream)', font: 'inherit', fontWeight: 700, fontSize: 17, cursor: 'pointer'}}>
                   Hledat
