@@ -23,6 +23,8 @@ export type ClusterSource = {
 export type ClusterItem = ClusterSource & {
   parsed: ParsedOffer;
   partWords: Set<string>;
+  /** kmeny z partType, které jsou v názvu přídavným jménem („kulatý“, „primární“) */
+  adjectiveWords: Set<string>;
   /** hlavní slovo typu dílu = první slovo názvu, které je v partType („pružina“ v „Pružina čelistí“) */
   headWord: string | null;
 };
@@ -115,7 +117,13 @@ export function buildClusterItems(sources: ClusterSource[]): ClusterItem[] {
   return sources.map((source) => {
     const parsed = parseOfferName(source.name, { shopId: source.shopId });
     const partWords = new Set(parsed.partType.split(' ').filter(Boolean));
-    return { ...source, parsed, partWords, headWord: headWordOf(source.name, partWords) };
+    return {
+      ...source,
+      parsed,
+      partWords,
+      headWord: headWordOf(source.name, partWords),
+      adjectiveWords: adjectiveWordsOf(source.name, partWords),
+    };
   });
 }
 
@@ -130,6 +138,27 @@ export function headWordOf(name: string, partWords: Set<string>): string | null 
 }
 
 /**
+ * Přídavné jméno podle koncovky (před odstraněním diakritiky): -ý/-á/-é, nebo -í kromě
+ * podstatných jmen slovesných (těsnění, zapalování, řízení). Hrubé, ale stačí na „slovo navíc“.
+ */
+export function isAdjective(word: string): boolean {
+  const w = word.toLowerCase();
+  if (w.length < 4) return false;
+  if (/[ýáé]$/.test(w)) return true;
+  return /í$/.test(w) && !/(ení|ání|ění|ítí|ití|ůní)$/.test(w);
+}
+
+export function adjectiveWordsOf(name: string, partWords: Set<string>): Set<string> {
+  const out = new Set<string>();
+  for (const word of name.split(/[^\p{L}\d]+/u)) {
+    if (!isAdjective(word)) continue;
+    const stem = stemWord(foldText(word));
+    if (partWords.has(stem)) out.add(stem);
+  }
+  return out;
+}
+
+/**
  * Atributy, jejichž údaj jen u jedné nabídky shodu neblokuje: povrch, materiál, barva, balení
  * („úpl.“, „sada“ – ne počet kusů), „s čím“ a umístění. E-shopy je prostě často neuvádějí. Kdyby nabídka bez
  * údaje pasovala na dvě různé varianty z jednoho shopu (šedý / červený), chytí to nejednoznačnost.
@@ -138,15 +167,16 @@ export function headWordOf(name: string, partWords: Set<string>): string | null 
 export const SOFT_ONE_SIDED = new Set(['finish', 'material', 'color', 'pack', 'with', 'position']);
 
 /**
- * Typ dílu jedné nabídky je podmnožinou druhé o jediné slovo navíc, a to slovo není hlavní
- * („Vzduchový filtr“ ⊂ „Vzduchový filtr kulatý“ ano; „Náboj rozety“ ⊂ „Unašeč náboje rozety“ ne).
+ * Typ dílu jedné nabídky je podmnožinou druhé o jediné slovo navíc, to slovo je přídavné jméno
+ * a není hlavní („Vzduchový filtr“ ⊂ „Vzduchový filtr kulatý“ ano; „Náboj rozety“ ⊂ „Unašeč náboje
+ * rozety“ ne; „Píst“ ⊂ „Pístní sada“ ne).
  */
 export function subsetType(a: ClusterItem, b: ClusterItem): boolean {
   const [small, big] = a.partWords.size <= b.partWords.size ? [a, b] : [b, a];
   if (small.partWords.size === 0 || big.partWords.size - small.partWords.size !== 1) return false;
   for (const word of small.partWords) if (!big.partWords.has(word)) return false;
   const extra = [...big.partWords].find((word) => !small.partWords.has(word))!;
-  return big.headWord !== extra;
+  return big.headWord !== extra && big.adjectiveWords.has(extra);
 }
 
 /** Klíč fit_generic: seřazené "brand|objem". '' = bez údaje. */

@@ -619,6 +619,20 @@ export function parseOfferName(name: string, options: ParseOfferOptions = {}): P
   text = r.text;
   for (const m of r.matches) dimensions.push(normNum(m[0]).replace(/[=-]/g, ''));
 
+  // trysky: holé číslo hned za „hlavní / volnoběžná / tryska / velikost“ je velikost trysky
+  // („Tryska hlavní 72“, „velikost 68“) – zapíše se jako d72, stejně jako „d=72“
+  if (isJet) {
+    const jetRe = /((?:hlavn|volnobez|trysk|velikost)\w*\s+)(\d{2,3})(?![a-z\d.,])/g;
+    let jm: RegExpExecArray | null;
+    let jetText = text;
+    while ((jm = jetRe.exec(text)) !== null) {
+      dimensions.push(`d${jm[2]}`);
+      const at = jm.index + jm[1].length;
+      jetText = jetText.slice(0, at) + ' '.repeat(jm[2].length) + jetText.slice(at + jm[2].length);
+    }
+    text = jetText;
+  }
+
   // 2,15 x 16", 41,50x2mm, 15 × 4mm, 19" x 2,25
   r = take(
     text,

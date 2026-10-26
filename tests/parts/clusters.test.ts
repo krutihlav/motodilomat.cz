@@ -158,6 +158,10 @@ describe('findClusterPairs', () => {
       src('motomax', 'Unašeč náboje rozety Jawa / ČZ', 942, ['jawa-350-634']),
       src('jawa-korda', 'Pružina startovacích čelistí BABETTA 207', 17, ['babetta-207']),
       src('motokramek', 'Startovací čelist Babetta 207', 20, ['babetta-207']),
+      src('jawasvet', 'Pístní sada (CZ/Almet), čep 15 - Jawa 250 Kývačka', 1010, ['kyvacka-250']),
+      src('motojelinek', 'Píst (CZ / ALMET), čep 15 - JAWA 250 Kývačka', 650, ['kyvacka-250']),
+      src('veteranmoto', 'Tryska hlavní 72 - (pionýr, mustang)', 70, ['pionyr-20']),
+      src('motomax', 'Tryska hlavní 60 karburátoru PIONÝR 05, 20, 21, 23', 64, ['pionyr-20']),
     ]);
     expect(head.countA).toBe(0);
   });
