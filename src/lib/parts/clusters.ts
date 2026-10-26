@@ -87,7 +87,26 @@ export type ClusterOptions = {
   relaxed?: boolean;
   /** Ruční rozhodnutí (pair_reviews): klíč pairKey(a, b). same = A, different = pár se zahodí. */
   reviews?: Map<string, PairDecision>;
+  /** Pravidla naučená z ručních rozhodnutí (learnFromReviews). */
+  learned?: LearnedRules;
 };
+
+export type LearnedRules = {
+  /** slova typu dílu, na kterých nezáleží („kompletn“, „repasovan“) */
+  neutralWords: Set<string>;
+  /** slova, která dělají jiný díl („naboj“) – liší-li se v nich typy, pár nikdy není A */
+  blockWords: Set<string>;
+  /** typ dílu → atributy, které jen u jedné nabídky u tohoto typu nevadí (zapalovan → ref) */
+  softAttrsByType: Map<string, Set<string>>;
+};
+
+/** Slova, ve kterých se typy dvou nabídek liší. */
+export function typeDiff(a: ClusterItem, b: ClusterItem): string[] {
+  return [
+    ...[...a.partWords].filter((w) => !b.partWords.has(w)),
+    ...[...b.partWords].filter((w) => !a.partWords.has(w)),
+  ];
+}
 
 export type PairDecision = 'same' | 'different' | 'skip';
 
@@ -295,7 +314,7 @@ export function findClusterPairs(
   sources: ClusterSource[] | ClusterItem[],
   options: ClusterOptions = {},
 ): ClusterResult {
-  const { maxPriceRatio = 2.5, minJaccard = 0.5, relaxed = true } = options;
+  const { maxPriceRatio = 2.5, minJaccard = 0.5, relaxed = true, learned } = options;
   const items =
     sources.length > 0 && 'parsed' in sources[0]
       ? (sources as ClusterItem[])
@@ -353,12 +372,19 @@ export function findClusterPairs(
 
         const ratio = priceRatio(a.price, b.price);
         const sameType = a.parsed.partType === b.parsed.partType;
-        const typeOk = sameType || (relaxed && (subsetType(a, b) || adjectiveOnlyDiff(a, b)));
+        const diff = learned ? typeDiff(a, b) : [];
+        const learnedBlock = diff.some((w) => learned!.blockWords.has(w));
+        const learnedSame =
+          !sameType && diff.length > 0 && !learnedBlock && diff.every((w) => learned!.neutralWords.has(w));
+        const typeOk =
+          !learnedBlock &&
+          (sameType || learnedSame || (relaxed && (subsetType(a, b) || adjectiveOnlyDiff(a, b))));
+        const learnedSoft = learned?.softAttrsByType.get(a.parsed.partType);
         const packValue = a.parsed.variant.pack ?? b.parsed.variant.pack;
         const blocking = relaxed
           ? oneSided.filter(
               (key) =>
-                !SOFT_ONE_SIDED.has(key) ||
+                (!SOFT_ONE_SIDED.has(key) && !(sameType && learnedSoft?.has(key))) ||
                 // počet kusů („2ks“) mění cenu – blokuje; „sada“ / „úpl.“ ne
                 (key === 'pack' && packValue !== 'sada' && packValue !== 'complete'),
             )
@@ -368,7 +394,10 @@ export function findClusterPairs(
         if (!typeOk) reasons.push(`jaccard ${sim.toFixed(2)}`);
         if (blocking.length > 0) reasons.push(`chybí: ${blocking.join(',')}`);
         const relaxedBy: string[] = [];
-        if (isA && !sameType) relaxedBy.push('typ ⊂');
+        if (isA && learnedSame) relaxedBy.push('naučeno: slova');
+        else if (isA && !sameType) relaxedBy.push('typ ⊂');
+        if (isA && learnedSoft && oneSided.some((k) => learnedSoft.has(k))) relaxedBy.push('naučeno: údaj');
+        if (learnedBlock) reasons.push('naučeno: jiný díl');
         if (isA && oneSided.length > 0) relaxedBy.push(`jen u jedné: ${oneSided.join(',')}`);
         if (ratio === null) reasons.push('cena chybí');
         else if (ratio > maxPriceRatio) reasons.push(`cena ×${ratio.toFixed(1)}`);

@@ -33,7 +33,7 @@ import {
   type FitGenericEntry,
   type PairDecision,
 } from '../src/lib/parts/clusters';
-import { loadReviews } from '../src/lib/parts/reviews';
+import { clusterWithLearning, loadReviews, renderLearnReport } from '../src/lib/parts/reviews';
 import {
   buildPartPlans,
   countStaleAuto,
@@ -216,7 +216,10 @@ export function planFromSources(
   sources: ClusterSource[],
   reviews?: Map<string, PairDecision>,
 ): PartPlan[] {
-  return buildPartPlans(findClusterPairs(sources, { reviews }).clusters);
+  if (!reviews) return buildPartPlans(findClusterPairs(sources).clusters);
+  const { result, learn } = clusterWithLearning(sources, reviews);
+  console.log(renderLearnReport(learn));
+  return buildPartPlans(result.clusters);
 }
 
 async function main() {

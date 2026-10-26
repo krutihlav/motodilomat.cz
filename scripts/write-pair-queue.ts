@@ -9,8 +9,8 @@
  * Fronta je odvozená data – zápis ji celou smaže a naplní znovu. Rozhodnutí (pair_reviews)
  * se nikdy nemažou.
  */
-import { findClusterPairs, rankB } from '../src/lib/parts/clusters';
-import { loadReviews, queueRows } from '../src/lib/parts/reviews';
+import { rankB } from '../src/lib/parts/clusters';
+import { clusterWithLearning, loadReviews, queueRows, renderLearnReport } from '../src/lib/parts/reviews';
 import { loadSources } from './write-parts';
 
 const CHUNK = 500;
@@ -20,7 +20,8 @@ async function main() {
   const client = createServiceRoleClient();
   const sources = await loadSources(client);
   const reviews = await loadReviews(client);
-  const result = findClusterPairs(sources, { reviews });
+  const { result, learn } = clusterWithLearning(sources, reviews);
+  console.log(renderLearnReport(learn));
   const rows = queueRows(rankB(result.pairs), reviews);
 
   console.log(`Nabídek: ${result.items}, A párů: ${result.countA}, B párů: ${result.countB}`);
