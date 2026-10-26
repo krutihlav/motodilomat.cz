@@ -125,6 +125,20 @@ export class SupabasePartsRepository implements PartsRepository {
   }
 
   async insertPart(part: Parameters<PartsRepository['insertPart']>[0]) {
+    // slug je hash cluster_key; existující díl si při změně shluku nechává starý slug, takže
+    // nový díl může narazit na obsazený slug → přidá se pořadové číslo
+    for (let attempt = 1; ; attempt += 1) {
+      const slug = attempt === 1 ? part.slug : `${part.slug}-${attempt}`;
+      try {
+        return await this.insertPartOnce({ ...part, slug });
+      } catch (error) {
+        if (attempt < 5 && /parts_slug_key/.test(String(error))) continue;
+        throw error;
+      }
+    }
+  }
+
+  private async insertPartOnce(part: Parameters<PartsRepository['insertPart']>[0]) {
     const { data, error } = await this.client
       .from('parts')
       .insert({

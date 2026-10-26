@@ -476,18 +476,21 @@ function markAmbiguous(result: ClusterResult): void {
   // páry s ostatními shopy zůstávají A (union-find je přes tento shop nespojí)
   const ambiguous = new Set<string>();
   const owners = new Set<string>();
-  const fullyAmbiguous = new Set<string>();
+  // partneři napříč shopy se navzájem variantou vylučují (65,25 vs 66,00 / 6V vs 12V) → nabídka
+  // je „výběr variant“: do B jdou její páry s partnery, kteří ten atribut mají. Páry s jinými
+  // stejně obecnými nabídkami (atribut nemají) zůstávají A.
+  const vagueAttrs = new Map<string, Set<string>>();
   for (const [ownerId, byShop] of partners) {
-    // partneři napříč shopy se navzájem varianotou vylučují (65,25 vs 66,00) → nabídka je
-    // „výběr variant“ a nesmí spojit různé díly: všechny její páry jdou do B
     const all = [...byShop.values()].flat();
-    const conflicting = all.some((x, i) =>
-      all.slice(i + 1).some((y) => compareVariants(x.parsed.variant, y.parsed.variant).conflicts.length > 0),
+    const attrs = new Set<string>();
+    all.forEach((x, i) =>
+      all.slice(i + 1).forEach((y) => {
+        for (const key of compareVariants(x.parsed.variant, y.parsed.variant).conflicts) attrs.add(key);
+      }),
     );
-    if (conflicting) {
-      fullyAmbiguous.add(ownerId);
+    if (attrs.size > 0) {
+      vagueAttrs.set(ownerId, attrs);
       owners.add(ownerId);
-      continue;
     }
     for (const [shopId, list] of byShop) {
       if (list.length < 2) continue;
@@ -499,12 +502,17 @@ function markAmbiguous(result: ClusterResult): void {
     }
   }
   result.ambiguousItems = owners.size;
+  const hasVague = (owner: ClusterItem, partner: ClusterItem) => {
+    const attrs = vagueAttrs.get(owner.id);
+    if (!attrs) return false;
+    return [...attrs].some((key) => partner.parsed.variant[key as keyof OfferVariant] !== null);
+  };
   for (const pair of result.pairs) {
     if (
       pair.class !== 'A' ||
       !(
-        fullyAmbiguous.has(pair.a.id) ||
-        fullyAmbiguous.has(pair.b.id) ||
+        hasVague(pair.a, pair.b) ||
+        hasVague(pair.b, pair.a) ||
         ambiguous.has(`${pair.a.id}|${pair.b.shopId}`) ||
         ambiguous.has(`${pair.b.id}|${pair.a.shopId}`)
       )

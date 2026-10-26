@@ -161,7 +161,7 @@ describe('findClusterPairs', () => {
       src('jawa-korda', 'Bezkontaktní zapalování VAPE pro JAWA 50 pionýr', 5322, ['pionyr-20']),
       src('motojelinek', 'Bezkontaktní zapalování (VAPE) - JAWA 50 Pionýr', 5220, ['pionyr-20']),
       src('birdgarage', 'Zapalování VAPE JAWA 50 Pionýr 12V', 5700, ['pionyr-20']),
-      src('birdgarage', 'Zapalování VAPE JAWA 50 Pionýr 6V', 5600, ['pionyr-20']),
+      src('veteranmoto', 'Zapalování VAPE JAWA 50 Pionýr 6V', 5600, ['pionyr-20']),
     ]);
     const kordaJelinek = result.pairs.find(
       (p) => [p.a.shopId, p.b.shopId].sort().join() === 'jawa-korda,motojelinek',
