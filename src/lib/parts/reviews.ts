@@ -37,9 +37,12 @@ export type QueueRow = {
  * chybí údaj), v rámci toho dražší díly – tam je srovnání ceny nejvíc vidět.
  */
 export function queueRows(rankedB: ClusterPair[], reviews: Map<string, PairDecision>): QueueRow[] {
-  const sameType = (p: ClusterPair) => (p.a.parsed.partType === p.b.parsed.partType ? 1 : 0);
+  // 2 = stejný typ dílu, 1 = stejné hlavní slovo (pružina ↔ pružina), 0 = jiné hlavní slovo
+  // (pružina ↔ pojistka – skoro vždy jiný díl, jde na konec)
+  const tier = (p: ClusterPair) =>
+    p.a.parsed.partType === p.b.parsed.partType ? 2 : p.a.headWord !== null && p.a.headWord === p.b.headWord ? 1 : 0;
   const maxPrice = (p: ClusterPair) => Math.max(p.a.price ?? 0, p.b.price ?? 0);
-  const ordered = [...rankedB].sort((x, y) => sameType(y) - sameType(x) || maxPrice(y) - maxPrice(x));
+  const ordered = [...rankedB].sort((x, y) => tier(y) - tier(x) || maxPrice(y) - maxPrice(x));
   const rows: QueueRow[] = [];
   for (const pair of ordered) {
     const [a, b] = pair.a.id < pair.b.id ? [pair.a.id, pair.b.id] : [pair.b.id, pair.a.id];
