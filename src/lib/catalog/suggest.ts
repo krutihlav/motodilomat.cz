@@ -63,10 +63,14 @@ async function load() {
   return cache;
 }
 
-/** Shoda: každé slovo dotazu je začátkem některého slova v textu (u čísel stačí výskyt). */
+/**
+ * Shoda: každé slovo dotazu je začátkem některého slova textu. Čísla se navíc porovnávají i po
+ * částech oddělených čárkou („05,20,21“ najde „20“), ale „38“ nenajde „638“.
+ */
 function matches(text: string, tokens: string[]): boolean {
   const words = text.split(' ');
-  return tokens.every((t) => (/\d/.test(t) ? text.includes(t) : words.some((w) => w.startsWith(t))));
+  const parts = words.flatMap((w) => (w.includes(',') ? [w, ...w.split(',')] : [w]));
+  return tokens.every((t) => parts.some((w) => w.startsWith(t)));
 }
 
 export async function suggest(q: string): Promise<Suggestion[]> {
@@ -85,7 +89,7 @@ export async function suggest(q: string): Promise<Suggestion[]> {
       kind: 'part',
       label: p.name,
       href: `/dil/${p.slug}`,
-      meta: `${p.shops} e-shopů`,
+      meta: `${p.shops} ${p.shops < 5 ? 'e-shopy' : 'e-shopů'}`,
       price: p.minPrice,
       image: p.image,
     }));
