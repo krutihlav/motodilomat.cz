@@ -116,7 +116,7 @@ export async function getModelOffers(params: {
   offset: number;
 }) {
   const {sb, internal} = catalogDb();
-  const {data, error} = await sb.rpc('catalog_model_offers', {
+  const {data, error} = await sb.rpc('catalog_model_offers_v2', {
     p_slug: params.slug,
     p_internal: internal,
     p_category: params.category,

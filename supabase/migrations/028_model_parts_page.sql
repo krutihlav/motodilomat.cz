@@ -1,6 +1,7 @@
 -- 028: stránka modelu – všechny díly se srovnáním cen (stránkovaně) a u nabídek odkaz na díl.
+-- Bez DROP: nabídky se slugem dílu jsou nová funkce catalog_model_offers_v2
+-- (původní catalog_model_offers zůstává beze změny).
 
--- Díly modelu s nabídkami aspoň ze 2 shopů; filtry jako u nabídek, celkový počet v total.
 create or replace function catalog_model_parts_page(
   p_slug text, p_internal boolean default false, p_category text default null,
   p_shops text[] default null, p_in_stock boolean default false, p_sort text default 'shops',
@@ -41,12 +42,10 @@ as $$
   limit least(p_limit, 100) offset p_offset
 $$;
 
--- Nabídky modelu: navíc slug dílu, pokud je nabídka v dílu se srovnáním (2+ shopy).
-drop function if exists catalog_model_offers(text, boolean, text, text[], boolean, text, int, int, boolean);
-create function catalog_model_offers(
+create or replace function catalog_model_offers_v2(
   p_slug text, p_internal boolean default false, p_category text default null,
   p_shops text[] default null, p_in_stock boolean default false, p_sort text default 'price_asc',
-  p_limit int default 30, p_offset int default 0, p_exclude_compared boolean default false)
+  p_limit int default 30, p_offset int default 0)
 returns table (id uuid, shop_id text, shop_name text, name text, price int, in_stock boolean,
                url text, image_url text, part_id uuid, part_slug text, total int)
 language sql stable
@@ -64,7 +63,6 @@ as $$
       and (p_category is null or v.category = p_category)
       and (p_shops is null or v.shop_id = any (p_shops))
       and (not p_in_stock or v.in_stock)
-      and (not p_exclude_compared or v.part_id is null or v.part_id not in (select part_id from compared))
   )
   select o.id, o.shop_id, o.shop_name, o.name, o.price::int, o.in_stock, o.url, o.image_url, o.part_id,
          (select p.slug from parts p where p.id = o.part_id and o.part_id in (select part_id from compared)),
@@ -79,5 +77,5 @@ $$;
 
 grant execute on function
   catalog_model_parts_page(text, boolean, text, text[], boolean, text, int, int),
-  catalog_model_offers(text, boolean, text, text[], boolean, text, int, int, boolean)
+  catalog_model_offers_v2(text, boolean, text, text[], boolean, text, int, int)
 to anon, authenticated;
