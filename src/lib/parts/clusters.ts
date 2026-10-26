@@ -176,7 +176,33 @@ export function subsetType(a: ClusterItem, b: ClusterItem): boolean {
   if (small.partWords.size === 0 || big.partWords.size - small.partWords.size !== 1) return false;
   for (const word of small.partWords) if (!big.partWords.has(word)) return false;
   const extra = [...big.partWords].find((word) => !small.partWords.has(word))!;
-  return big.headWord !== extra && big.adjectiveWords.has(extra);
+  if (big.headWord === extra) return false;
+  if (big.adjectiveWords.has(extra)) return true;
+  // podstatné jméno navíc jen při stejném hlavním slovu („Vložka výfuku“ ⊂ „Vložka tlumiče výfuku“,
+  // „Jehla karburátoru“ ⊂ „Jehla šoupátka karburátoru“) – ne „sada“ a ne názvy s „+“ (víc dílů)
+  return (
+    small.headWord !== null &&
+    small.headWord === big.headWord &&
+    !SET_WORDS.has(extra) &&
+    !a.name.includes('+') &&
+    !b.name.includes('+')
+  );
+}
+
+/** Slova, která dělají z dílu sadu / jiný celek – nikdy nejsou „jen upřesnění“. */
+const SET_WORDS = new Set(['sada', 'souprav', 'komplet', 'kit', 'gufer', 'tesnen']);
+
+/**
+ * Stejné hlavní slovo a všechna slova, ve kterých se typy liší, jsou přídavná jména
+ * („Plech sedla rovný“ ↔ „Plech sedla“, „Lamela spojky korková“ ↔ „Lamela spojky ferodová“
+ * by prošla – proto dál platí cena ×2,5 a nejednoznačnost).
+ */
+export function adjectiveOnlyDiff(a: ClusterItem, b: ClusterItem): boolean {
+  if (a.headWord === null || a.headWord !== b.headWord) return false;
+  const onlyA = [...a.partWords].filter((w) => !b.partWords.has(w));
+  const onlyB = [...b.partWords].filter((w) => !a.partWords.has(w));
+  if (onlyA.length + onlyB.length === 0) return false;
+  return onlyA.every((w) => a.adjectiveWords.has(w)) && onlyB.every((w) => b.adjectiveWords.has(w));
 }
 
 /** Klíč fit_generic: seřazené "brand|objem". '' = bez údaje. */
@@ -315,7 +341,7 @@ export function findClusterPairs(
 
         const ratio = priceRatio(a.price, b.price);
         const sameType = a.parsed.partType === b.parsed.partType;
-        const typeOk = sameType || (relaxed && subsetType(a, b));
+        const typeOk = sameType || (relaxed && (subsetType(a, b) || adjectiveOnlyDiff(a, b)));
         const packValue = a.parsed.variant.pack ?? b.parsed.variant.pack;
         const blocking = relaxed
           ? oneSided.filter(

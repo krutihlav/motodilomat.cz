@@ -147,6 +147,19 @@ describe('findClusterPairs', () => {
     expect(result.pairs[0].reasons[0]).toMatch(/^jaccard 0\.\d\d/);
   });
 
+  it('stejné hlavní slovo a upřesňující podstatné jméno = A; sada nebo „+“ = B', () => {
+    const ok = findClusterPairs([
+      src('motomax', 'Vložka tlumiče výfuku BABETTA', 160, ['babetta-210']),
+      src('jawa-korda', 'Vložka výfuku Babetta', 153, ['babetta-210']),
+    ]);
+    expect(ok.countA).toBe(1);
+    const bad = findClusterPairs([
+      src('jawasvet', 'Ložiska motoru - sada Babetta 210,225', 169, ['babetta-210']),
+      src('motojelinek', 'Ložiska + gufera motoru Babetta 210', 339, ['babetta-210']),
+    ]);
+    expect(bad.countA).toBe(0);
+  });
+
   it('typ dílu o jedno přídavné slovo delší = A; jiné hlavní slovo = B', () => {
     const adj = findClusterPairs([
       src('javarna', 'Kryt řetězu Jawa Pionýr 20', 100, ['pionyr-20']),
