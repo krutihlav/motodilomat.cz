@@ -1,4 +1,4 @@
-import { parseOfferName, type OfferVariant, type ParsedOffer } from './parseOfferName';
+import { foldText, parseOfferName, stemWord, type OfferVariant, type ParsedOffer } from './parseOfferName';
 
 export type FitGenericEntry = { brand: string; displacement?: number | null };
 
@@ -20,7 +20,12 @@ export type ClusterSource = {
   partId?: string | null;
 };
 
-export type ClusterItem = ClusterSource & { parsed: ParsedOffer; partWords: Set<string> };
+export type ClusterItem = ClusterSource & {
+  parsed: ParsedOffer;
+  partWords: Set<string>;
+  /** hlavní slovo typu dílu = první slovo názvu, které je v partType („pružina“ v „Pružina čelistí“) */
+  headWord: string | null;
+};
 
 export type PairBasis = 'model' | 'fit_generic' | 'no_fit';
 
@@ -38,6 +43,8 @@ export type ClusterPair = {
   priceRatio: number | null;
   /** proč pár není A (jen u B), případně zajímavé okolnosti */
   reasons: string[];
+  /** u A: která uvolněná pravidla pár pustila (např. „jen u jedné: pack“, „typ ⊂“) */
+  relaxed: string[];
 };
 
 export type ClusterGroup = {
@@ -74,6 +81,8 @@ export type ClusterResult = {
 export type ClusterOptions = {
   maxPriceRatio?: number;
   minJaccard?: number;
+  /** false = původní přísná pravidla (každý jednostranný atribut i odlišný partType = B) */
+  relaxed?: boolean;
   /** Ruční rozhodnutí (pair_reviews): klíč pairKey(a, b). same = A, different = pár se zahodí. */
   reviews?: Map<string, PairDecision>;
 };
@@ -105,12 +114,39 @@ export const VARIANT_ATTRIBUTES: (keyof OfferVariant)[] = [
 export function buildClusterItems(sources: ClusterSource[]): ClusterItem[] {
   return sources.map((source) => {
     const parsed = parseOfferName(source.name, { shopId: source.shopId });
-    return {
-      ...source,
-      parsed,
-      partWords: new Set(parsed.partType.split(' ').filter(Boolean)),
-    };
+    const partWords = new Set(parsed.partType.split(' ').filter(Boolean));
+    return { ...source, parsed, partWords, headWord: headWordOf(source.name, partWords) };
   });
+}
+
+/** První slovo názvu (v pořadí), jehož kmen je v partType. */
+export function headWordOf(name: string, partWords: Set<string>): string | null {
+  for (const word of foldText(name).split(/[^a-z0-9]+/)) {
+    if (word.length < 2) continue;
+    const stem = stemWord(word);
+    if (partWords.has(stem)) return stem;
+  }
+  return null;
+}
+
+/**
+ * Atributy, jejichž údaj jen u jedné nabídky shodu neblokuje: povrch, materiál, barva, balení
+ * („úpl.“, „sada“ – ne počet kusů), „s čím“ a umístění. E-shopy je prostě často neuvádějí. Kdyby nabídka bez
+ * údaje pasovala na dvě různé varianty z jednoho shopu (šedý / červený), chytí to nejednoznačnost.
+ * Rozměr, napětí, strana, zuby, velikost, značka (Jikov, Vape…), verze a kód blokují dál.
+ */
+export const SOFT_ONE_SIDED = new Set(['finish', 'material', 'color', 'pack', 'with', 'position']);
+
+/**
+ * Typ dílu jedné nabídky je podmnožinou druhé o jediné slovo navíc, a to slovo není hlavní
+ * („Vzduchový filtr“ ⊂ „Vzduchový filtr kulatý“ ano; „Náboj rozety“ ⊂ „Unašeč náboje rozety“ ne).
+ */
+export function subsetType(a: ClusterItem, b: ClusterItem): boolean {
+  const [small, big] = a.partWords.size <= b.partWords.size ? [a, b] : [b, a];
+  if (small.partWords.size === 0 || big.partWords.size - small.partWords.size !== 1) return false;
+  for (const word of small.partWords) if (!big.partWords.has(word)) return false;
+  const extra = [...big.partWords].find((word) => !small.partWords.has(word))!;
+  return big.headWord !== extra;
 }
 
 /** Klíč fit_generic: seřazené "brand|objem". '' = bez údaje. */
@@ -191,7 +227,7 @@ export function findClusterPairs(
   sources: ClusterSource[] | ClusterItem[],
   options: ClusterOptions = {},
 ): ClusterResult {
-  const { maxPriceRatio = 2.5, minJaccard = 0.5 } = options;
+  const { maxPriceRatio = 2.5, minJaccard = 0.5, relaxed = true } = options;
   const items =
     sources.length > 0 && 'parsed' in sources[0]
       ? (sources as ClusterItem[])
@@ -249,10 +285,23 @@ export function findClusterPairs(
 
         const ratio = priceRatio(a.price, b.price);
         const sameType = a.parsed.partType === b.parsed.partType;
-        const isA = sameType && oneSided.length === 0 && ratio !== null && ratio <= maxPriceRatio;
+        const typeOk = sameType || (relaxed && subsetType(a, b));
+        const packValue = a.parsed.variant.pack ?? b.parsed.variant.pack;
+        const blocking = relaxed
+          ? oneSided.filter(
+              (key) =>
+                !SOFT_ONE_SIDED.has(key) ||
+                // počet kusů („2ks“) mění cenu – blokuje; „sada“ / „úpl.“ ne
+                (key === 'pack' && packValue !== 'sada' && packValue !== 'complete'),
+            )
+          : oneSided;
+        const isA = typeOk && blocking.length === 0 && ratio !== null && ratio <= maxPriceRatio;
         const reasons: string[] = [];
-        if (!sameType) reasons.push(`jaccard ${sim.toFixed(2)}`);
-        if (oneSided.length > 0) reasons.push(`chybí: ${oneSided.join(',')}`);
+        if (!typeOk) reasons.push(`jaccard ${sim.toFixed(2)}`);
+        if (blocking.length > 0) reasons.push(`chybí: ${blocking.join(',')}`);
+        const relaxedBy: string[] = [];
+        if (isA && !sameType) relaxedBy.push('typ ⊂');
+        if (isA && oneSided.length > 0) relaxedBy.push(`jen u jedné: ${oneSided.join(',')}`);
         if (ratio === null) reasons.push('cena chybí');
         else if (ratio > maxPriceRatio) reasons.push(`cena ×${ratio.toFixed(1)}`);
 
@@ -268,6 +317,7 @@ export function findClusterPairs(
           jaccard: sim,
           priceRatio: ratio,
           reasons,
+          relaxed: relaxedBy,
         });
         if (isA) result.countA += 1;
         else result.countB += 1;
@@ -463,6 +513,20 @@ export function renderClusterReport(
       .map((b) => `${b} A ${result.byBasis[b].A} / B ${result.byBasis[b].B}`)
       .join('; ')}`,
   );
+
+  const relaxedPairs = result.pairs.filter((p) => p.class === 'A' && p.relaxed.length > 0);
+  if (relaxedPairs.length > 0) {
+    const byRule: Record<string, number> = {};
+    for (const p of relaxedPairs) for (const r of p.relaxed) byRule[r] = (byRule[r] ?? 0) + 1;
+    out.push('', `## A jen díky uvolněným pravidlům (${relaxedPairs.length} párů)`, '');
+    for (const [rule, n] of Object.entries(byRule).sort((x, y) => y[1] - x[1])) out.push(`- ${rule}: ${n}`);
+    out.push('', 'Ukázka (každý 1/N-tý pár, nejvýš 60):', '');
+    const step = Math.max(1, Math.floor(relaxedPairs.length / 60));
+    for (let i = 0; i < relaxedPairs.length && i / step < 60; i += step) {
+      const p = relaxedPairs[i];
+      out.push(`- [${p.relaxed.join('; ')}] ${esc(p.a.name)} (${money(p.a.price)}) ↔ ${esc(p.b.name)} (${money(p.b.price)})`);
+    }
+  }
 
   out.push('', '## Zahozeno pro konflikt varianty podle atributu', '');
   out.push(

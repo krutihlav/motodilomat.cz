@@ -100,22 +100,66 @@ describe('findClusterPairs', () => {
     expect(reasons).toEqual(['cena chybí', 'cena chybí', 'cena ×6.0']);
   });
 
-  it('B: chybějící atribut na jedné straně', () => {
-    const result = findClusterPairs([
-      src('javarna', 'Držák světla zadní Jawa Pionýr 20', 100, ['pionyr-20']),
-      src('motomax', 'Držák světla JAWA 50 - 20  *M', 110, ['pionyr-20']),
-    ]);
+  it('B: chybějící atribut na jedné straně (přísný režim)', () => {
+    const result = findClusterPairs(
+      [
+        src('javarna', 'Držák světla zadní Jawa Pionýr 20', 100, ['pionyr-20']),
+        src('motomax', 'Držák světla JAWA 50 - 20  *M', 110, ['pionyr-20']),
+      ],
+      { relaxed: false },
+    );
     expect(result.countA).toBe(0);
     expect(result.pairs[0]).toMatchObject({ class: 'B', reasons: ['chybí: position'] });
   });
 
-  it('B: podobný partType (Jaccard ≥ 0,5), ne stejný', () => {
+  it('A: umístění, povrch nebo „sada“ jen u jedné nabídky shodu neblokují', () => {
     const result = findClusterPairs([
+      src('javarna', 'Držák světla zadní Jawa Pionýr 20', 100, ['pionyr-20']),
+      src('motomax', 'Držák světla JAWA 50 - 20  *M', 110, ['pionyr-20']),
+    ]);
+    expect(result.pairs[0]).toMatchObject({ class: 'A', relaxed: ['jen u jedné: position'] });
+    const exhaust = findClusterPairs([
+      src('motokramek', 'Výfuky Jawa 125, 175 Kyvačka - doutník (sada) - CZ', 7445, ['jawa-cz-175-356']),
+      src('jawa-korda', 'Výfuky doutníky Jawa ČZ 125/175 355 a 356 Taiwan', 4620, ['jawa-cz-175-356']),
+    ]);
+    expect(exhaust.countA).toBe(1);
+  });
+
+  it('B: rozměr, strana, značka nebo počet kusů jen u jedné nabídky blokují dál', () => {
+    const result = findClusterPairs([
+      src('javarna', 'Kryt řetězu Jawa Pionýr 20', 100, ['pionyr-20']),
+      src('motokramek', 'Kryt řetězu Jawa Pionýr 20 - 2ks', 105, ['pionyr-20']),
+      src('motomax', 'Napínák řetězu L úpl. JAWA 50 - 20', 95, ['pionyr-20']),
+      src('jawa-korda', 'Napínák řetězu Jawa Pionýr 20', 80, ['pionyr-20']),
+    ]);
+    expect(result.countA).toBe(0);
+  });
+
+  it('B: podobný partType (Jaccard ≥ 0,5), ne stejný (přísný režim)', () => {
+    const result = findClusterPairs(
+      [
+        src('javarna', 'Kryt řetězu Jawa Pionýr 20', 100, ['pionyr-20']),
+        src('motomax', 'Kryt řetězu ochranný JAWA 50 - 20  *M', 105, ['pionyr-20']),
+      ],
+      { relaxed: false },
+    );
+    expect(result.countB).toBe(1);
+    expect(result.pairs[0].reasons[0]).toMatch(/^jaccard 0\.\d\d/);
+  });
+
+  it('typ dílu o jedno přídavné slovo delší = A; jiné hlavní slovo = B', () => {
+    const adj = findClusterPairs([
       src('javarna', 'Kryt řetězu Jawa Pionýr 20', 100, ['pionyr-20']),
       src('motomax', 'Kryt řetězu ochranný JAWA 50 - 20  *M', 105, ['pionyr-20']),
     ]);
-    expect(result.countB).toBe(1);
-    expect(result.pairs[0].reasons[0]).toMatch(/^jaccard 0\.\d\d/);
+    expect(adj.pairs[0]).toMatchObject({ class: 'A', relaxed: ['typ ⊂'] });
+    const head = findClusterPairs([
+      src('javarna', 'Náboj rozety JAWA / ČZ', 1400, ['jawa-350-634']),
+      src('motomax', 'Unašeč náboje rozety Jawa / ČZ', 942, ['jawa-350-634']),
+      src('jawa-korda', 'Pružina startovacích čelistí BABETTA 207', 17, ['babetta-207']),
+      src('motokramek', 'Startovací čelist Babetta 207', 20, ['babetta-207']),
+    ]);
+    expect(head.countA).toBe(0);
   });
 
   it('Jaccard pod 0,5 se nevyhodnocuje', () => {
