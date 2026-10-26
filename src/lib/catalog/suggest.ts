@@ -22,8 +22,8 @@ async function load() {
   for (let from = 0; ; from += 1000) {
     const {data, error} = await sb
       .rpc('catalog_visible', {p_internal: internal})
+      .select('id, part_id, shop_id, price, image_url')
       .not('part_id', 'is', null)
-      .select('part_id, shop_id, price, image_url')
       .order('id')
       .range(from, from + 999);
     if (error) throw new Error(`Našeptávač: nabídky selhaly: ${error.message}`);
