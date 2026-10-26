@@ -147,6 +147,26 @@ describe('findClusterPairs', () => {
       src('jawa-korda', 'Píst Jawa 250 panelka 66mm, čep 18mm', 650, ['panelka-250-559']),
     ]);
     expect(many.countA).toBe(0);
+    // výběr variant spojený se dvěma různými rozměry z různých shopů je nespojí
+    const cross = findClusterPairs([
+      src('motojelinek', 'Píst (CZ/ALMET), čep 18 Jawa 250 Panelka, Sportka', 650, ['panelka-250-559']),
+      src('jawa-korda', 'Píst Jawa 250 panelka 65,25mm, čep 18mm', 650, ['panelka-250-559']),
+      src('motomax', 'Píst JAWA 250 Panelka 66,00 / 18', 640, ['panelka-250-559']),
+    ]);
+    expect(cross.countA).toBe(0);
+  });
+
+  it('nejednoznačnost vůči jednomu shopu neblokuje páry s ostatními shopy', () => {
+    const result = findClusterPairs([
+      src('jawa-korda', 'Bezkontaktní zapalování VAPE pro JAWA 50 pionýr', 5322, ['pionyr-20']),
+      src('motojelinek', 'Bezkontaktní zapalování (VAPE) - JAWA 50 Pionýr', 5220, ['pionyr-20']),
+      src('birdgarage', 'Zapalování VAPE JAWA 50 Pionýr 12V', 5700, ['pionyr-20']),
+      src('birdgarage', 'Zapalování VAPE JAWA 50 Pionýr 6V', 5600, ['pionyr-20']),
+    ]);
+    const kordaJelinek = result.pairs.find(
+      (p) => [p.a.shopId, p.b.shopId].sort().join() === 'jawa-korda,motojelinek',
+    );
+    expect(kordaJelinek?.class).toBe('A');
   });
 
   it('B: podobný partType (Jaccard ≥ 0,5), ne stejný (přísný režim)', () => {

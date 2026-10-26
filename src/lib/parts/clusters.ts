@@ -472,17 +472,45 @@ function markAmbiguous(result: ClusterResult): void {
     add(pair.a, pair.b);
     add(pair.b, pair.a);
   }
+  // nejednoznačnost platí jen vůči shopu, ze kterého má nabídka víc rozdílných partnerů;
+  // páry s ostatními shopy zůstávají A (union-find je přes tento shop nespojí)
   const ambiguous = new Set<string>();
+  const owners = new Set<string>();
+  const fullyAmbiguous = new Set<string>();
   for (const [ownerId, byShop] of partners) {
-    for (const list of byShop.values()) {
+    // partneři napříč shopy se navzájem varianotou vylučují (65,25 vs 66,00) → nabídka je
+    // „výběr variant“ a nesmí spojit různé díly: všechny její páry jdou do B
+    const all = [...byShop.values()].flat();
+    const conflicting = all.some((x, i) =>
+      all.slice(i + 1).some((y) => compareVariants(x.parsed.variant, y.parsed.variant).conflicts.length > 0),
+    );
+    if (conflicting) {
+      fullyAmbiguous.add(ownerId);
+      owners.add(ownerId);
+      continue;
+    }
+    for (const [shopId, list] of byShop) {
       if (list.length < 2) continue;
       const differs = list.some((x, i) => list.slice(i + 1).some((y) => !sameOffer(x, y)));
-      if (differs) ambiguous.add(ownerId);
+      if (differs) {
+        ambiguous.add(`${ownerId}|${shopId}`);
+        owners.add(ownerId);
+      }
     }
   }
-  result.ambiguousItems = ambiguous.size;
+  result.ambiguousItems = owners.size;
   for (const pair of result.pairs) {
-    if (pair.class !== 'A' || !(ambiguous.has(pair.a.id) || ambiguous.has(pair.b.id))) continue;
+    if (
+      pair.class !== 'A' ||
+      !(
+        fullyAmbiguous.has(pair.a.id) ||
+        fullyAmbiguous.has(pair.b.id) ||
+        ambiguous.has(`${pair.a.id}|${pair.b.shopId}`) ||
+        ambiguous.has(`${pair.b.id}|${pair.a.shopId}`)
+      )
+    ) {
+      continue;
+    }
     pair.class = 'B';
     pair.reasons.push('ambiguous');
     result.countA -= 1;
