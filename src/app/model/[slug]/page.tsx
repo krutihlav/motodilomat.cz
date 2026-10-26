@@ -2,15 +2,15 @@ import type {Metadata} from 'next';
 import Link from 'next/link';
 import {notFound} from 'next/navigation';
 import {Footer, Header, InternalBanner, Plate, ArrowRight} from '@/components/catalog/Chrome';
-import {BestBadge, OfferRow, ShopLink} from '@/components/catalog/OfferRow';
+import {OfferRow} from '@/components/catalog/OfferRow';
 import Photo from '@/components/catalog/Photo';
 import AutoSubmitSelect from '@/components/catalog/AutoSubmitSelect';
 import {catalogDb} from '@/lib/catalog/db';
 import {catalogRobots, requireLaunched} from '@/lib/catalog/gate';
 import {CATEGORY_GROUPS, CATEGORY_LABELS, groupOf} from '@/lib/catalog/categories';
 import {countLabel, formatCount, formatPrice, OFFERS, SHOPS, shopLabel} from '@/lib/catalog/format';
-import {modelHref, parseModelFilters, type SearchParams} from '@/lib/catalog/params';
-import {getModel, getModelOffers, getModelParts, getModelSummary, getModels, getPartOffers, type Model} from '@/lib/catalog/queries';
+import {modelHref, parseModelFilters, type ModelFilters, type SearchParams} from '@/lib/catalog/params';
+import {getModel, getModelOffers, getModelPartsPage, getModelSummary, getModels, type Model} from '@/lib/catalog/queries';
 
 const PAGE_SIZE = 30;
 
@@ -49,17 +49,21 @@ export default async function ModelPage({params, searchParams}: Props) {
   if (!model) notFound();
 
   const {internal} = catalogDb();
-  const [summary, allModels, parts, list] = await Promise.all([
+  const query = {slug, category: f.category, shops: f.shops, inStock: f.inStock, sort: f.sort};
+  const [summary, allModels, partsPage] = await Promise.all([
     getModelSummary(slug),
     getModels(),
-    getModelParts(slug, f.category, 4),
-    getModelOffers({slug, category: f.category, shops: f.shops, inStock: f.inStock, sort: f.sort, limit: PAGE_SIZE, offset: (f.page - 1) * PAGE_SIZE}),
+    getModelPartsPage({...query, limit: f.view === 'dily' ? PAGE_SIZE : 1, offset: f.view === 'dily' ? (f.page - 1) * PAGE_SIZE : 0}),
   ]);
-  const partOffers = await Promise.all(parts.map((p) => getPartOffers(p.part_id)));
+  // bez dílů se srovnáním (nebo bez migrace 028) rovnou všechny nabídky
+  if (partsPage.total === 0 && f.view === 'dily') f.view = 'nabidky';
+  const list =
+    f.view === 'nabidky'
+      ? await getModelOffers({...query, limit: PAGE_SIZE, offset: (f.page - 1) * PAGE_SIZE})
+      : {offers: [], total: 0};
   const siblings = allModels.filter((m) => m.family === model.family);
   const selectedShops = new Set(f.shops ?? summary.shops.map((s) => s.id));
   const catCount = f.category ? (summary.categories.get(f.category) ?? 0) : summary.total;
-  const pages = Math.max(1, Math.ceil(list.total / PAGE_SIZE));
 
   return (
     <div className="md">
@@ -154,7 +158,7 @@ export default async function ModelPage({params, searchParams}: Props) {
 
             <form id="filtr" action={`/model/${slug}`} style={{display: 'flex', flexDirection: 'column', gap: 2}}>
               {f.category ? <input type="hidden" name="kat" value={f.category} /> : null}
-              {f.sort !== 'price_asc' ? <input type="hidden" name="razeni" value={f.sort} /> : null}
+              {f.view === 'nabidky' ? <input type="hidden" name="zobrazit" value="nabidky" /> : null}
               <fieldset style={{margin: 0, padding: 0, border: 0, display: 'flex', flexDirection: 'column', gap: 2}}>
                 <legend className="display" style={{width: '100%', padding: '10px 0 8px', borderTop: '2px solid var(--ink)', fontWeight: 700, fontSize: 18}}>
                   E-shop
@@ -178,13 +182,12 @@ export default async function ModelPage({params, searchParams}: Props) {
             </form>
           </aside>
 
-          <main style={{flex: '999 1 560px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 28}}>
+          <main style={{flex: '999 1 560px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24}}>
             <div style={{display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px 24px'}}>
               <div style={{display: 'flex', flexDirection: 'column', gap: 2}}>
                 {f.category ? <span style={{fontSize: 14, color: 'var(--dim)'}}>{groupOf(f.category)}</span> : null}
                 <h2 className="display" style={{margin: 0, fontWeight: 700, fontSize: 32, lineHeight: 1.1, letterSpacing: '-0.02em'}}>
-                  {f.category ? CATEGORY_LABELS[f.category] : 'Všechny díly'}{' '}
-                  <span style={{fontWeight: 500, fontSize: 18, letterSpacing: 0, color: 'var(--dim)'}}>{countLabel(catCount, OFFERS)}</span>
+                  {f.category ? CATEGORY_LABELS[f.category] : 'Všechny díly'}
                 </h2>
               </div>
               <div style={{display: 'flex', alignItems: 'center', gap: 10}}>
@@ -192,96 +195,74 @@ export default async function ModelPage({params, searchParams}: Props) {
                   Řadit
                 </label>
                 <AutoSubmitSelect id="razeni" name="razeni" form="filtr" defaultValue={f.sort} style={{height: 44, padding: '0 12px', background: 'var(--paper)', color: 'var(--ink)', border: '1px solid var(--line)', borderRadius: 8, font: 'inherit', fontSize: 15}}>
-                  <option value="price_asc">Od nejlevnějšího</option>
+                  <option value="price_asc">{f.view === 'dily' ? 'Nejvíc e-shopů' : 'Od nejlevnějšího'}</option>
                   <option value="price_desc">Od nejdražšího</option>
                   <option value="name">Podle názvu</option>
                 </AutoSubmitSelect>
               </div>
             </div>
 
-            {parts.length > 0 && f.page === 1 ? (
-              <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
-                <h3 className="eyebrow" style={{margin: 0, color: 'var(--red)'}}>
-                  Stejný díl ve více e-shopech
-                </h3>
-                {parts.map((p, i) => {
-                  const offers = partOffers[i] ?? [];
-                  const top = offers.filter((o) => o.in_stock).slice(0, 3);
-                  const shown = top.length > 0 ? top : offers.slice(0, 3);
-                  return (
-                    <article key={p.part_id} className="card" style={{display: 'flex', flexDirection: 'column', boxShadow: '0 2px 0 var(--line)'}}>
-                      <div style={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 20px', padding: 20}}>
-                        <span style={{display: 'flex', flexDirection: 'column', gap: 4, width: 88}}>
-                          <Photo src={p.image_url} alt={p.name} size={88} />
-                          {p.image_url && p.image_shop ? <span style={{fontSize: 11, color: 'var(--dim)'}}>foto: {shopLabel(p.image_shop)}</span> : null}
-                        </span>
-                        <div style={{flex: '1 1 260px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2}}>
-                          <Link href={`/dil/${p.slug}`} className="display" style={{fontWeight: 700, fontSize: 22, lineHeight: 1.25}}>
-                            {p.name}
-                          </Link>
-                          <span style={{fontSize: 14, color: 'var(--dim)'}}>
-                            {countLabel(p.offers, OFFERS)} · {countLabel(p.shops, SHOPS)}
-                            {p.max_price > p.min_price ? ` · rozdíl ${formatPrice(p.max_price - p.min_price)}` : ''}
-                          </span>
-                        </div>
-                        <div style={{display: 'flex', alignItems: 'baseline', gap: 8}}>
-                          <span style={{fontSize: 14, color: 'var(--dim)'}}>od</span>
-                          <span className="display" style={{fontWeight: 700, fontSize: 32, lineHeight: 1, whiteSpace: 'nowrap', color: 'var(--red)'}}>
-                            {formatPrice(p.min_price)}
-                          </span>
-                        </div>
-                      </div>
-                      {shown.map((o, j) => (
-                        <div key={o.id} style={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px 20px', padding: '14px 20px', borderTop: '1px solid var(--line)'}}>
-                          <div style={{flex: '1 1 280px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3}}>
-                            <span style={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 12px'}}>
-                              <span style={{fontWeight: 700, fontSize: 16}}>{shopLabel(o.shop_name)}</span>
-                              {j === 0 && o.price === p.min_price ? <BestBadge /> : null}
-                            </span>
-                            <span style={{fontSize: 14, color: 'var(--dim)'}}>{o.name}</span>
-                          </div>
-                          <span className="display" style={{minWidth: 96, textAlign: 'right', fontWeight: 700, fontSize: 20, whiteSpace: 'nowrap'}}>
-                            {formatPrice(o.price)}
-                          </span>
-                          <ShopLink href={o.url} />
-                        </div>
-                      ))}
-                      <Link href={`/dil/${p.slug}`} style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 52, padding: '0 20px', borderTop: '1px solid var(--line)', fontWeight: 600, color: 'var(--red)'}}>
-                        <span>Porovnat {countLabel(p.offers, OFFERS)}</span>
-                        <ArrowRight />
-                      </Link>
-                    </article>
-                  );
-                })}
-              </div>
-            ) : null}
+            <nav aria-label="Zobrazení" style={{display: 'flex', flexWrap: 'wrap', gap: 0, borderBottom: '2px solid var(--ink)'}}>
+              <Tab href={modelHref(slug, f, {view: 'dily', page: 1})} active={f.view === 'dily'} label="Srovnání cen" n={partsPage.total} />
+              <Tab href={modelHref(slug, f, {view: 'nabidky', page: 1})} active={f.view === 'nabidky'} label="Všechny nabídky" n={catCount} />
+            </nav>
 
-            <div style={{display: 'flex', flexDirection: 'column'}}>
-              <h3 className="eyebrow" style={{margin: 0, paddingBottom: 8, borderBottom: '2px solid var(--ink)', color: 'var(--soft)'}}>
-                {parts.length > 0 ? 'Další nabídky' : 'Nabídky'} · {formatCount(list.total)}
-              </h3>
-              {list.offers.length === 0 ? <p style={{color: 'var(--soft)'}}>Pro tyto filtry tu zatím nic není.</p> : null}
-              {list.offers.map((o) => (
-                <OfferRow key={o.id} offer={o} />
-              ))}
-              {pages > 1 ? (
-                <nav aria-label="Stránkování" style={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginTop: 24}}>
-                  {f.page > 1 ? (
-                    <Link className="chip" href={modelHref(slug, f, {page: f.page - 1})}>
-                      Předchozí
+            {f.view === 'dily' ? (
+              <div style={{display: 'flex', flexDirection: 'column'}}>
+                {partsPage.parts.length === 0 ? (
+                  <p style={{color: 'var(--soft)'}}>
+                    Tady zatím žádný díl se srovnáním cen není.{' '}
+                    <Link href={modelHref(slug, f, {view: 'nabidky', page: 1})} style={{color: 'var(--red)', textDecoration: 'underline'}}>
+                      Zobrazit všechny nabídky
                     </Link>
-                  ) : null}
-                  <span style={{fontSize: 14, color: 'var(--dim)'}}>
-                    strana {f.page} z {pages}
-                  </span>
-                  {f.page < pages ? (
-                    <Link className="chip" href={modelHref(slug, f, {page: f.page + 1})}>
-                      Další
-                    </Link>
-                  ) : null}
-                </nav>
-              ) : null}
-            </div>
+                  </p>
+                ) : null}
+                {partsPage.parts.map((p) => (
+                  <Link
+                    key={p.part_id}
+                    href={`/dil/${p.slug}`}
+                    style={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 20px', padding: '16px 0', borderBottom: '1px solid var(--line)', color: 'var(--ink)'}}
+                  >
+                    <Photo src={p.image_url} alt={p.name} size={64} />
+                    <span style={{flex: '1 1 260px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4}}>
+                      <span style={{fontWeight: 600, fontSize: 16, lineHeight: 1.35}}>{p.name}</span>
+                      <span style={{fontSize: 14, color: 'var(--dim)'}}>
+                        {countLabel(p.shops, SHOPS)} · {countLabel(p.offers, OFFERS)}
+                        {p.in_stock > 0 ? ` · ${p.in_stock} skladem` : ' · nic skladem'}
+                      </span>
+                    </span>
+                    <span style={{display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 110}}>
+                      <span style={{display: 'flex', alignItems: 'baseline', gap: 6}}>
+                        <span style={{fontSize: 14, color: 'var(--dim)'}}>od</span>
+                        <span className="display" style={{fontWeight: 700, fontSize: 22, whiteSpace: 'nowrap', color: 'var(--red)'}}>
+                          {formatPrice(p.min_price)}
+                        </span>
+                      </span>
+                      {p.max_price > p.min_price ? <span style={{fontSize: 13, color: 'var(--dim)'}}>až {formatPrice(p.max_price)}</span> : null}
+                    </span>
+                    <span className="btn-out" aria-hidden="true">
+                      Porovnat <ArrowRight />
+                    </span>
+                  </Link>
+                ))}
+                <Pager slug={slug} f={f} total={partsPage.total} />
+              </div>
+            ) : (
+              <div style={{display: 'flex', flexDirection: 'column'}}>
+                {list.offers.length === 0 ? <p style={{color: 'var(--soft)'}}>Pro tyto filtry tu zatím nic není.</p> : null}
+                {list.offers.map((o) => (
+                  <div key={o.id}>
+                    <OfferRow offer={o} />
+                    {o.part_slug ? (
+                      <Link href={`/dil/${o.part_slug}`} style={{display: 'inline-flex', alignItems: 'center', gap: 6, margin: '-8px 0 12px 84px', fontSize: 14, fontWeight: 600, color: 'var(--red)'}}>
+                        Porovnat s dalšími e-shopy <ArrowRight />
+                      </Link>
+                    ) : null}
+                  </div>
+                ))}
+                <Pager slug={slug} f={f} total={list.total} />
+              </div>
+            )}
           </main>
         </div>
       </section>
@@ -305,5 +286,51 @@ function CatLink({href, label, n, active, sub}: {href: string; label: string; n:
       <span>{label}</span>
       <span className="tabnum" style={{color: 'var(--dim)'}}>{formatCount(n)}</span>
     </Link>
+  );
+}
+
+function Tab({href, active, label, n}: {href: string; active: boolean; label: string; n: number}) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? 'page' : undefined}
+      style={{
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: 8,
+        minHeight: 48,
+        padding: '12px 18px 10px',
+        boxSizing: 'border-box',
+        marginBottom: -2,
+        borderBottom: active ? '4px solid var(--red)' : '4px solid transparent',
+        fontWeight: 700,
+        fontSize: 16,
+        color: active ? 'var(--red)' : 'var(--soft)',
+      }}
+    >
+      {label} <span className="tabnum" style={{fontWeight: 500, fontSize: 14, color: 'var(--dim)'}}>{formatCount(n)}</span>
+    </Link>
+  );
+}
+
+function Pager({slug, f, total}: {slug: string; f: ModelFilters; total: number}) {
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (pages <= 1) return null;
+  return (
+    <nav aria-label="Stránkování" style={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, marginTop: 24}}>
+      {f.page > 1 ? (
+        <Link className="chip" href={modelHref(slug, f, {page: f.page - 1})}>
+          Předchozí
+        </Link>
+      ) : null}
+      <span style={{fontSize: 14, color: 'var(--dim)'}}>
+        strana {f.page} z {pages}
+      </span>
+      {f.page < pages ? (
+        <Link className="chip" href={modelHref(slug, f, {page: f.page + 1})}>
+          Další
+        </Link>
+      ) : null}
+    </nav>
   );
 }

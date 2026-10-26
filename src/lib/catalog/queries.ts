@@ -127,8 +127,39 @@ export async function getModelOffers(params: {
     p_offset: params.offset,
   });
   if (error) fail('nabídky modelu', error);
-  const rows = (data ?? []) as (Offer & {total: number})[];
+  const rows = (data ?? []) as (Offer & {part_slug: string | null; total: number})[];
   return {offers: rows, total: rows[0]?.total ?? 0};
+}
+
+export type ModelPartRow = PartSummary & {in_stock: number; total: number};
+
+/** Díly modelu se srovnáním cen (2+ e-shopy), stránkovaně. */
+export async function getModelPartsPage(params: {
+  slug: string;
+  category: CategoryKey | null;
+  shops: string[] | null;
+  inStock: boolean;
+  sort: 'price_asc' | 'price_desc' | 'name';
+  limit: number;
+  offset: number;
+}) {
+  const {sb, internal} = catalogDb();
+  const {data, error} = await sb.rpc('catalog_model_parts_page', {
+    p_slug: params.slug,
+    p_internal: internal,
+    p_category: params.category,
+    p_shops: params.shops,
+    p_in_stock: params.inStock,
+    // výchozí řazení dílů: nejvíc e-shopů první
+    p_sort: params.sort === 'price_asc' ? 'shops' : params.sort,
+    p_limit: params.limit,
+    p_offset: params.offset,
+  });
+  // dokud není migrace 028 v DB, funkce neexistuje (PGRST202) – stránka pak ukáže jen nabídky
+  if (error && (error as {code?: string}).code === 'PGRST202') return {parts: [], total: 0};
+  if (error) fail('díly modelu', error);
+  const rows = (data ?? []) as ModelPartRow[];
+  return {parts: rows, total: rows[0]?.total ?? 0};
 }
 
 export async function getPartOffers(partId: string): Promise<Offer[]> {

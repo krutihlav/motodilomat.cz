@@ -8,6 +8,8 @@ export type ModelFilters = {
   inStock: boolean;
   sort: 'price_asc' | 'price_desc' | 'name';
   page: number;
+  /** dily = díly se srovnáním cen (výchozí), nabidky = všechny nabídky */
+  view: 'dily' | 'nabidky';
 };
 
 function first(v: string | string[] | undefined): string | undefined {
@@ -26,6 +28,7 @@ export function parseModelFilters(sp: SearchParams): ModelFilters {
     inStock: first(sp.sklad) === '1',
     sort: sort === 'price_desc' || sort === 'name' ? sort : 'price_asc',
     page: Number.isFinite(page) && page > 0 && page < 500 ? page : 1,
+    view: first(sp.zobrazit) === 'nabidky' ? 'nabidky' : 'dily',
   };
 }
 
@@ -38,6 +41,7 @@ export function modelHref(slug: string, f: ModelFilters, patch: Partial<ModelFil
   if (n.inStock) q.set('sklad', '1');
   if (n.sort !== 'price_asc') q.set('razeni', n.sort);
   if (n.page > 1) q.set('strana', String(n.page));
+  if (n.view === 'nabidky') q.set('zobrazit', 'nabidky');
   const qs = q.toString();
   return `/model/${slug}${qs ? `?${qs}` : ''}`;
 }
